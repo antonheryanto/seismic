@@ -6,8 +6,10 @@
     <NullableReferenceTypes>true</NullableReferenceTypes>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Authors>Anton Heryanto Hasan</Authors>
+    <Version>0.1.0</Version>
+    <Copyright>2022</Copyright>
+    <Description>High performance seismic reader</Description>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
 </Project>

@@ -20,12 +20,6 @@ public enum DataFormat
     INT8 = 8         // all integers are big endian for segy (unix, IBM), little endian on Intel (hence in code)
 }
 
-// TODO
-// compare with old implementation
-// read file using file seek
-// read file using readonly span
-// read file using pipeline
-
 public class SegyReader
 {
     // private bool _isEbcdic = true;
@@ -43,8 +37,6 @@ public class SegyReader
     public float EndX { get; private set; }
     public float EndY { get; private set; }
     public float EndZ { get; private set; }
-    //public double MinValue { get; set; } = double.MaxValue;
-    //public double MaxValue { get; set; } = double.MinValue;
     public int InLineSize { get; set; }
     public int InLineStep { get; set; } = 1;
     public int CrossLineSize { get; set; }
@@ -74,23 +66,10 @@ public class SegyReader
         _ => 4
     };
 
-    public unsafe SegyReader(string fileName)
+    public SegyReader(string fileName)
     {
         FileName = fileName;
         ParseHeader();
-    }
-
-    public float[][] StreamTraces()
-    {
-        if (_fileSize > TWO_GB)
-            return null;
-        var buffer = File.ReadAllBytes(FileName);
-        var traces = new float[TraceSize][];
-        Parallel.For(0, TraceSize - 1, (i) => {
-            ReadOnlySpan<byte> bytes = buffer;
-            traces[i] = ParseValue(bytes.Slice(HEADER_SIZE + _traceByteSize * i + TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE));
-        });
-        return traces;
     }
 
     public float[][] ReadAllTraces()
@@ -106,7 +85,7 @@ public class SegyReader
         return traces;
     }
 
-    private unsafe float[] ParseValue(ReadOnlySpan<byte> values)
+    private float[] ParseValue(ReadOnlySpan<byte> values)
     {
         var trace = new float[SampleSize];
         for (int i = 0; i < trace.Length; i++)
@@ -177,7 +156,7 @@ public class SegyReader
         return sb.ToString();
     }
 
-    private unsafe void ParseHeaderBinary(ReadOnlySpan<byte> bytes)
+    private void ParseHeaderBinary(ReadOnlySpan<byte> bytes)
     {
         var header = bytes.Slice(HEADER_TEXT_SIZE);
         var byte0 = header[FORMAT_INDEX];
@@ -190,7 +169,7 @@ public class SegyReader
         TraceSize = (int)((_fileSize - HEADER_SIZE) / _traceByteSize);
     }
 
-    private unsafe int[] ParseTraceHeader(ReadOnlySpan<byte> bytes)
+    private int[] ParseTraceHeader(ReadOnlySpan<byte> bytes)
     {
         var header = new int[93];
         for (int i = 0, k = 0, l = 0; i < _traceHeaderIndex.Length; i++)
