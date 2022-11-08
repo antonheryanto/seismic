@@ -32,17 +32,20 @@ public class SegyReader
     public int TraceSize { get; set; }
     public float BeginX { get; private set; }
     public float BeginY { get; private set; }
-    public float BeginZ { get; private set;
-    }
+    public float BeginZ { get; private set;}
     public float EndX { get; private set; }
     public float EndY { get; private set; }
     public float EndZ { get; private set; }
     public int InLineSize { get; set; }
     public int InLineStep { get; set; } = 1;
+    public int InlineBegin { get; set; }
+    public int InlineEnd { get; set; }
     public int CrossLineSize { get; set; }
     public int CrossLineStep { get; set; } = 1;
+    public int CrossLineBegin { get; set; }
+    public int CrossLineEnd { get; set; }
 
-    private const long TWO_GB = 2L * 1024 * 1024 * 1024;
+    private const int GB = 1024 * 1024 * 1024;
     private const int COLUMN_SIZE = 80;
     private const int ROW_SIZE = 40;
     private const int HEADER_TEXT_SIZE = 3200;
@@ -74,7 +77,7 @@ public class SegyReader
 
     public float[][] ReadAllTraces()
     {
-        if (_fileSize > TWO_GB)
+        if (_fileSize > (2L * GB))
             return null;
         var buffer = File.ReadAllBytes(FileName);
         var traces = new float[TraceSize][];
@@ -131,7 +134,7 @@ public class SegyReader
         CrossLineStep = t1[xLineIndex] - t0[xLineIndex];
 
         //read last trace
-        s.Seek(HEADER_SIZE + (_traceByteSize * (TraceSize - 1)), SeekOrigin.Begin);
+        s.Seek(HEADER_SIZE + (_traceByteSize * (TraceSize - 1L)), SeekOrigin.Begin);
         byteRead = s.Read(buffer, 0, TRACE_HEADER_SIZE);
         var tN = ParseTraceHeader(traceBytes.Slice(0, TRACE_HEADER_SIZE));
         pool.Return(buffer);
@@ -141,9 +144,15 @@ public class SegyReader
         if (CrossLineStep > 0)
             CrossLineSize = 1 + (tN[xLineIndex] - t0[xLineIndex]) / CrossLineStep;
         if (InLineSize == 0 && CrossLineSize > 0)
+        {
             InLineSize = TraceSize / CrossLineSize;
+            InLineStep = (1 + tN[inLineIndex] - t0[inLineIndex]) / InLineSize;
+        }
         if (InLineSize > 0 && CrossLineSize == 0)
+        {
             CrossLineSize = TraceSize / InLineSize;
+            CrossLineStep = (1 + tN[xLineIndex] - t0[xLineIndex]) / CrossLineSize;
+        }
     }
 
     private static string ParseHeaderText(byte[] header)
