@@ -118,9 +118,9 @@ public class SegyReader
         ParseHeaderBinary(buffer);
         pool.Return(buffer);
 
-        buffer = pool.Rent(_traceByteSize * 3);
-        byteRead = s.Read(buffer, 0, _traceByteSize * 3);
-        Span<byte> traceBytes = buffer;
+        buffer = pool.Rent(_traceByteSize * 2);
+        byteRead = s.Read(buffer, 0, _traceByteSize * 2);
+        ReadOnlySpan<byte> traceBytes = buffer;
         // first 3 trace
         var t0 = ParseTraceHeader(traceBytes.Slice(0, TRACE_HEADER_SIZE));
         var t1 = ParseTraceHeader(traceBytes.Slice(_traceByteSize, TRACE_HEADER_SIZE));
