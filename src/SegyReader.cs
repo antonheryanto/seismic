@@ -2,11 +2,11 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
+using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using System.Globalization;
-using System.Runtime.CompilerServices;
-using System.Linq;
 
 namespace Seismic;
 
@@ -29,13 +29,7 @@ public class SegyReader
     public DataFormat Format { get; set; }
     public int SampleSize { get; set; }
     public int SampleInterval { get; set; }
-    public int TraceSize { get; set; }
-    public float BeginX { get; private set; }
-    public float BeginY { get; private set; }
-    public float BeginZ { get; private set;}
-    public float EndX { get; private set; }
-    public float EndY { get; private set; }
-    public float EndZ { get; private set; }
+    public int TraceSize { get; set; }    
     public int InLineSize { get; set; }
     public int InLineStep { get; set; } = 1;
     public int InlineBegin { get; set; }
@@ -44,8 +38,17 @@ public class SegyReader
     public int CrossLineStep { get; set; } = 1;
     public int CrossLineBegin { get; set; }
     public int CrossLineEnd { get; set; }
+    public float XBegin { get; private set; }
+    public float XEnd { get; private set; }
+    public float YBegin { get; private set; }
+    public float YEnd { get; private set; }
+    public float ZBegin { get; private set; }
+    public float ZEnd { get; private set; }
+    public float MinValue { get; set; }
+    public float MaxValue { get; set; }
 
-    private const int GB = 1024 * 1024 * 1024;
+    private const int MB = 1024 * 1024;
+    private const int GB = 1024 * MB;
     private const int COLUMN_SIZE = 80;
     private const int ROW_SIZE = 40;
     private const int HEADER_TEXT_SIZE = 3200;
@@ -75,26 +78,57 @@ public class SegyReader
         ParseHeader();
     }
 
+    public async Task<float[][]> ReadTraceAsync(int minSize = MB)
+    {
+        await using var s = new FileStream(FileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var reader = PipeReader.Create(s);
+        var data = await reader.ReadAsync();
+        reader.AdvanceTo(data.Buffer.GetPosition(HEADER_SIZE));
+        var traces = new float[TraceSize][];
+        var length = _traceByteSize - TRACE_HEADER_SIZE;
+        int i = 0;
+        while (true)
+        {
+            data = await reader.ReadAtLeastAsync(minSize);
+            var amount = (int) (data.Buffer.Length / _traceByteSize);
+            var size = amount * _traceByteSize;
+            var buffer = data.Buffer.Slice(0, size);
+            Parallel.For(0, amount, (j) =>
+            {
+                var start = TRACE_HEADER_SIZE + _traceByteSize * j;
+                ReadOnlySpan<byte> bytes = buffer.Slice(start, length).ToArray();
+                traces[j + i] = ParseValue(ref bytes);
+            });
+            i += amount;
+
+            reader.AdvanceTo(buffer.End);
+            if (data.IsCompleted)
+                break;
+            
+        }
+        await reader.CompleteAsync();
+        return traces;
+    }
+
     public float[][] ReadAllTraces()
     {
         if (_fileSize > (2L * GB))
-            return null;
+            return Array.Empty<float[]>();
         var buffer = File.ReadAllBytes(FileName);
         var traces = new float[TraceSize][];
-        Parallel.For(0, TraceSize - 1, (i) => {
+        Parallel.For(0, TraceSize, (i) => {
             ReadOnlySpan<byte> bytes = buffer;
-            traces[i] = ParseValue(bytes.Slice(HEADER_SIZE + _traceByteSize * i + TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE));
+            var v = bytes.Slice(HEADER_SIZE + _traceByteSize * i + TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE);
+            traces[i] = ParseValue(ref v);
         });
         return traces;
     }
 
-    private float[] ParseValue(ReadOnlySpan<byte> values)
+    private float[] ParseValue(ref ReadOnlySpan<byte> values)
     {
         var trace = new float[SampleSize];
         for (int i = 0; i < trace.Length; i++)
-        {
             trace[i] = ToValue(values.Slice(i * 4, 4));
-        }
         return trace;
     }
 
