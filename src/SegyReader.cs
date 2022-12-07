@@ -166,11 +166,21 @@ public class SegyReader
         var xLineIndex = t0[74] > 0 ? 74 : 5;
         InLineStep = t1[inLineIndex] - t0[inLineIndex];
         CrossLineStep = t1[xLineIndex] - t0[xLineIndex];
+        var scalar = Math.Abs(t0[20]);
+        SampleInterval = t0[39] > 0 ? t0[39] / 1000 : 0;
+        XBegin = (t0[71] > 0 ? t0[71] : t0[21]) / scalar;
+        YBegin = (t0[72] > 0 ? t0[72] : t0[22]) / scalar;
+        ZBegin = t0[33] != 0 ? Math.Abs(t0[33]) : t0[35];
+        ZEnd = ZBegin + (SampleInterval * SampleSize);
+
 
         //read last trace
         s.Seek(HEADER_SIZE + (_traceByteSize * (TraceSize - 1L)), SeekOrigin.Begin);
         byteRead = s.Read(buffer, 0, TRACE_HEADER_SIZE);
         var tN = ParseTraceHeader(traceBytes.Slice(0, TRACE_HEADER_SIZE));
+        XEnd = (tN[71] > 0 ? tN[71] : tN[21]) / scalar;
+        YEnd = (tN[72] > 0 ? tN[72] : tN[22]) / scalar;
+
         pool.Return(buffer);
 
         if (InLineStep > 0)
