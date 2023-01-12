@@ -3,8 +3,8 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -29,7 +29,7 @@ public class SegyReader
     public DataFormat Format { get; set; }
     public int SampleSize { get; set; }
     public int SampleInterval { get; set; }
-    public int TraceSize { get; set; }    
+    public int TraceSize { get; set; }
     public int InLineSize { get; set; }
     public int InLineStep { get; set; } = 1;
     public int InlineBegin { get; set; }
@@ -62,22 +62,24 @@ public class SegyReader
     private int _traceByteSize;
     private long _fileSize;
     private bool _isLittleEndian = false;
-    private DataFormat _format;
     private static readonly byte[] _traceHeaderIndex = new byte[] { 7, 4, 8, 2, 4, 46, 5, 12, 1, 2, 2 };
 
-    private int GetValueSize() => _format switch
+    private int GetValueSize() => Format switch
     {
         DataFormat.INT8 => 1,
         DataFormat.INT16 => 2,
         _ => 4
     };
 
-    public SegyReader(string fileName)
+    public SegyReader(string fileName = null)
     {
+        if (fileName == null)
+            return;
         FileName = fileName;
         ParseHeader();
     }
 
+#if NETCOREAPP
     public async Task<float[][]> ReadTraceAsync(int minSize = MB)
     {
         await using var s = new FileStream(FileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -109,6 +111,7 @@ public class SegyReader
         await reader.CompleteAsync();
         return traces;
     }
+#endif
 
     public float[][] ReadAllTraces()
     {
@@ -128,17 +131,17 @@ public class SegyReader
     {
         var trace = new float[SampleSize];
         for (int i = 0; i < trace.Length; i++)
-            trace[i] = ToValue(values.Slice(i * 4, 4));
+            trace[i] = ToValue(values.Slice(i * _valueSize, _valueSize));
         return trace;
     }
 
-    private float ToValue(ReadOnlySpan<byte> bytes) => _format switch
+    private float ToValue(ReadOnlySpan<byte> bytes) => Format switch
     {
         DataFormat.INT8 => ToInt16(bytes),
         DataFormat.INT16 => ToInt16(bytes),
         DataFormat.INT32 => ToInt32(bytes),
         DataFormat.IEEEFLT32 => ToSingle(bytes),
-        DataFormat.IBMFLT32 => FromIbmSingle(bytes),
+        DataFormat.IBMFLT32 => IbmToSingle(bytes),
         _ => 0
     };
 
@@ -155,22 +158,28 @@ public class SegyReader
         ParseHeaderBinary(buffer);
         pool.Return(buffer);
 
-        buffer = pool.Rent(_traceByteSize * 2);
-        byteRead = s.Read(buffer, 0, _traceByteSize * 2);
+        // first n trace
+        var nTrace = 2;
+        var t = new int[nTrace][];
+        buffer = pool.Rent(_traceByteSize * nTrace);
+        byteRead = s.Read(buffer, 0, _traceByteSize * nTrace);
         ReadOnlySpan<byte> traceBytes = buffer;
-        // first 3 trace
-        var t0 = ParseTraceHeader(traceBytes.Slice(0, TRACE_HEADER_SIZE));
-        var t1 = ParseTraceHeader(traceBytes.Slice(_traceByteSize, TRACE_HEADER_SIZE));
+        for (int i = 0;i < nTrace; i++)
+            t[i] = ParseTraceHeader(traceBytes.Slice(_traceByteSize * i, TRACE_HEADER_SIZE));
 
-        var inLineIndex = t0[73] > 0 ? 73 : 1;
-        var xLineIndex = t0[74] > 0 ? 74 : 5;
-        InLineStep = t1[inLineIndex] - t0[inLineIndex];
-        CrossLineStep = t1[xLineIndex] - t0[xLineIndex];
-        var scalar = Math.Abs(t0[20]);
-        SampleInterval = t0[39] > 0 ? t0[39] / 1000 : 0;
-        XBegin = (t0[71] > 0 ? t0[71] : t0[21]) / scalar;
-        YBegin = (t0[72] > 0 ? t0[72] : t0[22]) / scalar;
-        ZBegin = t0[33] != 0 ? Math.Abs(t0[33]) : t0[35];
+        var inLineIndex = t[0][73] > 0 ? 73 : 1;
+        var xLineIndex = t[0][74] > 0 ? 74 : 5;
+        if (inLineIndex == 73 && xLineIndex == 5)
+            xLineIndex = 74;
+        InLineStep = t[1][inLineIndex] - t[0][inLineIndex];
+        CrossLineStep = t[1][xLineIndex] - t[0][xLineIndex];
+        var scalar = Math.Abs(t[0][20]);
+        if (scalar == 0)
+            scalar = 1;
+        SampleInterval = t[0][39] > 0 ? t[0][39] / 1000 : 0;
+        XBegin = (t[0][71] > 0 ? t[0][71] : t[0][21]) / scalar;
+        YBegin = (t[0][72] > 0 ? t[0][72] : t[0][22]) / scalar;
+        ZBegin = t[0][33] != 0 ? Math.Abs(t[0][33]) : t[0][35];
         ZEnd = ZBegin + (SampleInterval * SampleSize);
 
 
@@ -184,18 +193,20 @@ public class SegyReader
         pool.Return(buffer);
 
         if (InLineStep > 0)
-            InLineSize = 1 + (tN[inLineIndex] - t0[inLineIndex]) / InLineStep;
+            InLineSize = 1 + (tN[inLineIndex] - t[0][inLineIndex]) / InLineStep;
         if (CrossLineStep > 0)
-            CrossLineSize = 1 + (tN[xLineIndex] - t0[xLineIndex]) / CrossLineStep;
+            CrossLineSize = 1 + (tN[xLineIndex] - t[0][xLineIndex]) / CrossLineStep;
         if (InLineSize == 0 && CrossLineSize > 0)
         {
+            CrossLineSize = Math.Min(CrossLineSize, TraceSize); //handle 2d or incomplete data
             InLineSize = TraceSize / CrossLineSize;
-            InLineStep = (1 + tN[inLineIndex] - t0[inLineIndex]) / InLineSize;
+            InLineStep = (1 + tN[inLineIndex] - t[0][inLineIndex]) / InLineSize;
         }
         if (InLineSize > 0 && CrossLineSize == 0)
         {
-            CrossLineSize = TraceSize / InLineSize;
-            CrossLineStep = (1 + tN[xLineIndex] - t0[xLineIndex]) / CrossLineSize;
+            InLineSize = Math.Min(InLineSize, TraceSize); //handle 2d or incomplete data
+            CrossLineSize = Math.Max(TraceSize / InLineSize, 1);
+            CrossLineStep = (1 + tN[xLineIndex] - t[0][xLineIndex]) / CrossLineSize;
         }
     }
 
@@ -204,18 +215,18 @@ public class SegyReader
         var text = header[0] == 'C' ? Encoding.Default.GetString(header, 0, HEADER_TEXT_SIZE)
             : ToString(header, 0, HEADER_TEXT_SIZE);
         var sb = new StringBuilder();
-        for (int i = 0; i < ROW_SIZE; i++)            
+        for (int i = 0; i < ROW_SIZE; i++)
             sb.AppendLine(text.Substring(i * COLUMN_SIZE, COLUMN_SIZE));
         return sb.ToString();
     }
 
     private void ParseHeaderBinary(ReadOnlySpan<byte> bytes)
     {
-        var header = bytes.Slice(HEADER_TEXT_SIZE);
+        var header = bytes.Slice(HEADER_TEXT_SIZE, HEADER_BINARY_SIZE);
         var byte0 = header[FORMAT_INDEX];
         var byte1 = header[FORMAT_INDEX + 1];
         _isLittleEndian = byte1 == 0;
-        _format = (DataFormat)(_isLittleEndian ? byte0 : byte1);
+        Format = (DataFormat)(_isLittleEndian ? byte0 : byte1);
         _valueSize = GetValueSize();
         SampleSize = ToInt16(header.Slice(SAMPLE_SIZE_INDEX, 2));
         _traceByteSize = TRACE_HEADER_SIZE + SampleSize * _valueSize;
@@ -245,23 +256,41 @@ public class SegyReader
     private int ToInt32(ReadOnlySpan<byte> source) => _isLittleEndian
         ? BinaryPrimitives.ReadInt32LittleEndian(source) : BinaryPrimitives.ReadInt32BigEndian(source);
 
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private float ToSingle(ReadOnlySpan<byte> source) => _isLittleEndian
-        ? BinaryPrimitives.ReadSingleLittleEndian(source) : BinaryPrimitives.ReadSingleBigEndian(source);
+    private float ToSingle(ReadOnlySpan<byte> source)
+    {
+#if NETCOREAPP
+        return _isLittleEndian ? BinaryPrimitives.ReadSingleLittleEndian(source)
+            : BinaryPrimitives.ReadSingleBigEndian(source);
+#else
+        return _isLittleEndian ? BitConverter.ToSingle(source.ToArray(), 0)
+            : BitConverter.ToSingle(ReverseByte(source), 0);
+#endif
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte[] ReverseByte(ReadOnlySpan<byte> source)
+    {
+        var x = new byte[source.Length];
+        for (int i = 0, j = source.Length - 1; i < source.Length; i++, j--)
+            x[i] = source[j];
+        return x;
+    }
 
     private const int IBM_BASE = 16;
-    private const float THREE_BYTE_SHIFT = 16777216;
     private const byte EXPONENT_BIAS = 64;
+    private const float THREE_BYTE_SHIFT = 16777216;
     /// <summary>
     /// Returns a 32-bit IEEE single precision floating point number from four bytes encoding
     /// a single precision number in IBM System/360 Floating Point format
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static float FromIbmSingle(ReadOnlySpan<byte> source)
+    public float IbmToSingle(ReadOnlySpan<byte> source)
     {
-        if (0 == BinaryPrimitives.ReadInt32LittleEndian(source))
+        var y = BinaryPrimitives.ReadInt32LittleEndian(source);
+        if (0 == y)
             return 0;
-
         // The first bit is the sign.  The next 7 bits are the exponent.
         byte exponentBits = source[0];
         var sign = +1.0f;
@@ -273,7 +302,11 @@ public class SegyReader
         }
         // Remove the bias from the exponent
         exponentBits -= EXPONENT_BIAS;
+#if NETCOREAPP
         var exponent = MathF.Pow(IBM_BASE, exponentBits);
+#else
+        var exponent = (float)Math.Pow(IBM_BASE, exponentBits);
+#endif
 
         // The fractional part is Big Endian unsigned int to the right of the radix point
         // So we reverse the bytes and pack them back into an int
