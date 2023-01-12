@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.13.2" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.13.3" />
     <PackageReference Include="TechApps.Seismic" Version="0.4.1" />
     <ProjectReference Include="..\..\src\Seismic.csproj" />
   </ItemGroup>
