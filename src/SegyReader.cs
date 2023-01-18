@@ -26,7 +26,8 @@ public class SegyReader
 
     public string FileName { get; }
     public string Header { get; private set; }
-    public DataFormat Format { get; set; }
+    public DataFormat Format { get; set; } = DataFormat.IEEEFLT32;
+    public int Revision { get; set; } = 256;
     public int SampleSize { get; set; }
     public int SampleInterval { get; set; }
     public int TraceSize { get; set; }
@@ -119,7 +120,11 @@ public class SegyReader
             return Array.Empty<float[]>();
         var buffer = File.ReadAllBytes(FileName);
         var traces = new float[TraceSize][];
-        Parallel.For(0, TraceSize, (i) => {
+        var option = new ParallelOptions();
+#if DEBUG
+        option.MaxDegreeOfParallelism = 1;
+#endif
+        Parallel.For(0, traces.Length, option, i => {            
             ReadOnlySpan<byte> bytes = buffer;
             var v = bytes.Slice(HEADER_SIZE + _traceByteSize * i + TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE);
             traces[i] = ParseValue(ref v);
@@ -278,6 +283,9 @@ public class SegyReader
         return x;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte[] SwapByte(ReadOnlySpan<byte> s) => new byte[] { s[3], s[2], s[1], s[0] };
+
     private const int IBM_BASE = 16;
     private const byte EXPONENT_BIAS = 64;
     private const float THREE_BYTE_SHIFT = 16777216;
@@ -286,36 +294,31 @@ public class SegyReader
     /// a single precision number in IBM System/360 Floating Point format
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public float IbmToSingle(ReadOnlySpan<byte> source)
+    public float IbmToSingle(ReadOnlySpan<byte> s)
     {
-        var y = BinaryPrimitives.ReadInt32LittleEndian(source);
-        if (0 == y)
+        var y = BinaryPrimitives.ReadInt32BigEndian(s);
+        if (0 == y || s.Length != 4)
             return 0;
-        // The first bit is the sign.  The next 7 bits are the exponent.
-        byte exponentBits = source[0];
-        var sign = +1.0f;
-        // Remove sign from first bit
-        if (exponentBits >= 128)
-        {
-            sign = -1.0f;
-            exponentBits -= 128;
-        }
-        // Remove the bias from the exponent
-        exponentBits -= EXPONENT_BIAS;
+        // The first bit is the sign.
+        var sign = s[0] < 128 ? 1: -1;
+        // remove sign, The next 7 bits are the exponent.
+        var expBit = s[0] & 0x7f;
+        // (exp - 64) * 4 + 127 - 1 == exp * 4 - 256 + 126 == (exp << 2) - 130 
+        var expIEEE = (expBit << 2) - 130;
+        var exp = (byte) (expIEEE >> 1);
+        // ieee exp conversion except for 0
+        Span<byte> exponentBytes = stackalloc byte[] { 0, 0, 128, exp };
 #if NETCOREAPP
-        var exponent = MathF.Pow(IBM_BASE, exponentBits);
+        var exponent = BinaryPrimitives.ReadSingleLittleEndian(exponentBytes);
 #else
-        var exponent = (float)Math.Pow(IBM_BASE, exponentBits);
+        var exponent = BitConverter.ToSingle(exponentBytes.ToArray(), 0);
 #endif
-
         // The fractional part is Big Endian unsigned int to the right of the radix point
         // So we reverse the bytes and pack them back into an int
-        Span<byte> fractionBytes = stackalloc byte[] { source[3], source[2], source[1], 0 };
         // Note: The sign bit for int32 is in the last byte of the array, which is zero, so we don't have to convert to uint
-        float mantissa = BinaryPrimitives.ReadInt32LittleEndian(fractionBytes);
+        float fraction = BinaryPrimitives.ReadUInt32LittleEndian(stackalloc byte[] { s[3], s[2], s[1], 0 });
         // And divide by 2^(8 * 3) to move the decimal all the way to the left
-        var fraction = mantissa / THREE_BYTE_SHIFT;
-
+        fraction /= THREE_BYTE_SHIFT;
         return sign * exponent * fraction;
     }
 
