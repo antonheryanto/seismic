@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
@@ -80,8 +81,36 @@ public class SegyReader
         ParseHeader();
     }
 
-#if NETCOREAPP
-    public async Task<float[][]> ReadTraceAsync(int minSize = MB)
+    public void Write(string fileName, float[][] traces, int index = 0)
+    {
+        using var r = new FileStream(FileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var w = File.OpenWrite(fileName);
+        // write the text and binary header
+        var headers = new byte[HEADER_SIZE];
+        r.Read(headers, 0, HEADER_SIZE);
+        w.Write(headers, 0, HEADER_SIZE);
+        var buffer = new byte[TraceSize * _traceByteSize];
+        r.Read(buffer, 0, buffer.Length);
+        for (int i = 0, offset = 0; i < TraceSize; i++, offset += _traceByteSize)
+        {
+            // write the trace header
+            var traceHeader = new ArraySegment<byte>(buffer, offset, TRACE_HEADER_SIZE).ToArray();
+            w.Write(traceHeader, 0, traceHeader.Length);
+            // write trace value
+            var traceList = new List<byte>();
+            for (int j = 0; j < traces[i].Length; j++)
+            {
+                traceList.AddRange(FromSingle(traces[i][j]));
+            }
+            var traceData = traceList.ToArray();
+            w.Write(traceData, 0, traceData.Length);
+        }
+        w.Close();
+    }
+
+
+#if NET6_0_OR_GREATER
+    public async Task<float[][]> ReadTraceAsync(int minSize = GB)
     {
         await using var s = new FileStream(FileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         var reader = PipeReader.Create(s);
@@ -149,7 +178,6 @@ public class SegyReader
         DataFormat.IBMFLT32 => IbmToSingle(bytes),
         _ => 0
     };
-
 
     private void ParseHeader()
     {
@@ -265,7 +293,7 @@ public class SegyReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private float ToSingle(ReadOnlySpan<byte> source)
     {
-#if NETCOREAPP
+#if NET6_0_OR_GREATER
         return _isLittleEndian ? BinaryPrimitives.ReadSingleLittleEndian(source)
             : BinaryPrimitives.ReadSingleBigEndian(source);
 #else
@@ -308,7 +336,7 @@ public class SegyReader
         var exp = (byte) (expIEEE >> 1);
         // ieee exp conversion except for 0
         Span<byte> exponentBytes = stackalloc byte[] { 0, 0, 128, exp };
-#if NETCOREAPP
+#if NET6_0_OR_GREATER
         var exponent = BinaryPrimitives.ReadSingleLittleEndian(exponentBytes);
 #else
         var exponent = BitConverter.ToSingle(exponentBytes.ToArray(), 0);
@@ -322,6 +350,36 @@ public class SegyReader
         return sign * exponent * fraction;
     }
 
+    /// <summary>
+    /// Given a 32-bit IEEE single precision floating point number, returns four bytes encoding
+    /// a single precision number in IBM System/360 Floating Point format
+    /// </summary>
+    public static byte[] SingleToIbm(float value)
+    {
+        var bytes = new byte[4];
+        if (value == 0)
+            return bytes;
+
+        // Sign
+        if (value < 0)
+            bytes[0] = 128;
+        var v = Math.Abs(value);
+
+        // Fraction
+        // Find the number of digits (in the IBM base) we need to move the radix point to get a value that is less than 1
+        var moveRadix = (int)Math.Log(v, IBM_BASE) + 1;
+        var fraction = v / (Math.Pow(IBM_BASE, moveRadix));
+        var fractionInt = (int)(THREE_BYTE_SHIFT * fraction);
+        var fractionBytes = BitConverter.GetBytes(fractionInt);
+        bytes[3] = fractionBytes[0];
+        bytes[2] = fractionBytes[1];
+        bytes[1] = fractionBytes[2];
+
+        // Exponent
+        var exponent = moveRadix + EXPONENT_BIAS;
+        bytes[0] += (byte)exponent;
+        return bytes;
+    }
 
     private static readonly Encoding _unicode = Encoding.Unicode;
     //private static readonly Encoding _ebcdic = Encoding.GetEncoding("IBM037");
@@ -329,7 +387,15 @@ public class SegyReader
     public static string ToString(byte[] value, int index)
         => ToString(value, index, value.Length - index);
 
-    public static string ToString(byte[] bytes, int index, int length)
+    private static string ToString(byte[] bytes, int index, int length)
         => _unicode.GetString(Encoding.Convert(_ebcdic, _unicode, bytes, index, length));
 
+    //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[] FromSingle(float value)
+    {
+        if (Format == DataFormat.IBMFLT32)
+            return SingleToIbm(value);
+        var bytes = BitConverter.GetBytes(value);
+        return _isLittleEndian ? bytes : bytes.Reverse().ToArray();
+    }
 }
