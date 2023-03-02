@@ -110,22 +110,60 @@ public class SegyReader
     }
 
 #if NET6_0_OR_GREATER
-    public NativeMemoryArray<float> GetNativeMemoryArray()
+    public NativeMemoryArray<float> AsNativeMemoryArray()
     {
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
-        var size = RandomAccess.GetLength(handle);
-        using var array = new NativeMemoryArray<byte>(size - HEADER_SIZE);
-        RandomAccess.Read(handle, array.AsSpan(), HEADER_SIZE);
-        int i = 0;
-        var traces = new NativeMemoryArray<float>(1L * TraceSize * SampleSize);
-        foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+        var fileSize = RandomAccess.GetLength(handle);
+        var traces = new NativeMemoryArray<float>(TraceSize * SampleSize);
+        var size = fileSize < 2L * GB ? fileSize : (2L * GB / _traceByteSize) * _traceByteSize;
+        long offset = HEADER_SIZE;
+        long i = 0;
+        while (offset < fileSize)
         {
-            var v = chunk.Slice(TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE);
-            ReadOnlySpan<float> x = ParseValue(ref v);
-            x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
-            i++;
+            var arraySize = fileSize - offset > size ? size : fileSize - offset;
+            using var array = new NativeMemoryArray<byte>(arraySize);
+            RandomAccess.Read(handle, array.AsSpan(), offset);
+            foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+            {
+                var v = chunk.Slice(TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE);
+                ReadOnlySpan<float> x = ParseValue(ref v);
+                x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
+                i++;
+            }
+            offset += size;
         }
         return traces;
+    }
+
+    public void Write(string fileName, NativeMemoryArray<float> traces)
+    {
+        using var readHandler = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
+        using var writeHandler = File.OpenHandle(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+        var fileSize = RandomAccess.GetLength(readHandler);
+        var size = fileSize < 2L * GB ? fileSize : (2L * GB / _traceByteSize) * _traceByteSize;
+        long offset = HEADER_SIZE;
+        long i = 0;
+        while (offset < fileSize)
+        {
+            var arraySize = fileSize - offset > size ? size : fileSize - offset;
+            using var array = new NativeMemoryArray<byte>(arraySize);
+            RandomAccess.Read(readHandler, array.AsSpan(), offset);            
+            foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+            {
+                var header = chunk.Slice(0, TRACE_HEADER_SIZE);
+                Span<byte> traceByte = new byte[_traceByteSize];
+                chunk.Slice(0, TRACE_HEADER_SIZE).CopyTo(traceByte.Slice(0, TRACE_HEADER_SIZE));
+                for (int j = 0; j < SampleSize; j++)
+                {
+                    Span<byte> sample = FromSingle(traces[j]);
+                    sample.CopyTo(traceByte.Slice(j * sample.Length, sample.Length));
+                    i++;
+                }
+                traceByte.ToArray();
+                RandomAccess.Write(writeHandler, traceByte, offset);
+                offset += _traceByteSize;
+            }            
+        }
     }
 
 
