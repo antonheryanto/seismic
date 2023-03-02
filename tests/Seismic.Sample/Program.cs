@@ -17,10 +17,13 @@ class Program
         //var b = @"C:\Projects\TechApps\RockSeismod\data\Kirchhoff_PreSTM_time.segy";
         //var c = @"C:\Projects\TechApps\RockSeismod\data\T07_Angsi_stack_0_48deg_LineERivisit_E02.sgy";
         var reader = new SegyReader(a);
-        var traces = reader.ReadAllTraces();
+        //var traces = reader.ReadBigTrace();
+        using var traces = reader.AsNativeMemoryArray();
         reader.Write(d, traces);
-        //var summary = BenchmarkRunner.Run<SeismicBenchmark>();
+        //var traces = reader.ReadAllTraces();
+        //reader.Write(d, traces);
         //var v = IbmToFloat3();
+        //var summary = BenchmarkRunner.Run<SeismicBenchmark>();
     }
 }
 
@@ -29,14 +32,14 @@ public class SeismicBenchmark
 {
     const string FILE = @"C:\Projects\TechApps\entd\data\F3_demo.sgy";
 
-    //[Benchmark]
+    [Benchmark]
     public float[][] ArrayBased()
     {
         var reader = new TechApps.Seismic.SegyReader(FILE);
         return reader.Traces;
     }
 
-    //[Benchmark]
+    [Benchmark]
     public float[][] SpanBased()
     {
         var reader = new SegyReader(FILE);
@@ -47,11 +50,11 @@ public class SeismicBenchmark
     [Params(1024 * 1024)]
     public int MinSize { get; set; }
 
-    [Benchmark]
-    public async Task<float[][]> SpanAsyncBased()
-    {
-        var reader = new SegyReader(FILE);
-        return await reader.ReadTraceAsync(MinSize);
-    }
+    //[Benchmark]
+    //public async Task<float[][]> SpanAsyncBased()
+    //{
+    //    var reader = new SegyReader(FILE);
+    //    return await reader.ReadTraceAsync(MinSize);
+    //}
 
 }
