@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Cysharp.Collections;
+using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -108,8 +109,56 @@ public class SegyReader
         w.Close();
     }
 
-
 #if NET6_0_OR_GREATER
+    public NativeMemoryArray<float> GetNativeMemoryArray()
+    {
+        using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
+        var size = RandomAccess.GetLength(handle);
+        using var array = new NativeMemoryArray<byte>(size - HEADER_SIZE);
+        RandomAccess.Read(handle, array.AsSpan(), HEADER_SIZE);
+        int i = 0;
+        var traces = new NativeMemoryArray<float>(1L * TraceSize * SampleSize);
+        foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+        {
+            var v = chunk.Slice(TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE);
+            ReadOnlySpan<float> x = ParseValue(ref v);
+            x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
+            i++;
+        }
+        return traces;
+    }
+
+
+    public float[][] ReadBigTrace()
+    {
+        using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
+        var size = RandomAccess.GetLength(handle);
+        using var array = new NativeMemoryArray<byte>(size - HEADER_SIZE);
+        RandomAccess.Read(handle, array.AsSpan(), HEADER_SIZE);
+        int i = 0;
+        var traces = new float[TraceSize][];
+        foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+        {
+            var v = chunk.Slice(TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE);
+            traces[i] = ParseValue(ref v);
+            i++;
+        }
+        return traces;
+    }
+
+    public async Task ReadAllTraceAsync()
+    {
+        using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read, options: FileOptions.Asynchronous);
+        var size = RandomAccess.GetLength(handle);
+        using var array = new NativeMemoryArray<byte>(size);
+        await RandomAccess.ReadAsync(handle, array.AsMemoryList(), 0);
+        var option = new ParallelOptions();
+#if DEBUG
+        option.MaxDegreeOfParallelism = 1;
+#endif
+        
+    }
+
     public async Task<float[][]> ReadTraceAsync(int minSize = GB)
     {
         await using var s = new FileStream(FileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
