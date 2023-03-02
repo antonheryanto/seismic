@@ -142,6 +142,9 @@ public class SegyReader
         var fileSize = RandomAccess.GetLength(readHandler);
         var size = fileSize < 2L * GB ? fileSize : (2L * GB / _traceByteSize) * _traceByteSize;
         long offset = HEADER_SIZE;
+        var header = new byte[HEADER_SIZE];
+        RandomAccess.Read(readHandler, header, 0);
+        RandomAccess.Write(writeHandler, header, 0);
         long i = 0;
         while (offset < fileSize)
         {
@@ -150,16 +153,14 @@ public class SegyReader
             RandomAccess.Read(readHandler, array.AsSpan(), offset);            
             foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
             {
-                var header = chunk.Slice(0, TRACE_HEADER_SIZE);
                 Span<byte> traceByte = new byte[_traceByteSize];
                 chunk.Slice(0, TRACE_HEADER_SIZE).CopyTo(traceByte.Slice(0, TRACE_HEADER_SIZE));
                 for (int j = 0; j < SampleSize; j++)
                 {
-                    Span<byte> sample = FromSingle(traces[j]);
-                    sample.CopyTo(traceByte.Slice(j * sample.Length, sample.Length));
+                    Span<byte> sample = FromSingle((float)traces[i]);
+                    sample.CopyTo(traceByte.Slice(TRACE_HEADER_SIZE + j * sample.Length, sample.Length));
                     i++;
                 }
-                traceByte.ToArray();
                 RandomAccess.Write(writeHandler, traceByte, offset);
                 offset += _traceByteSize;
             }            
