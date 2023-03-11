@@ -47,8 +47,8 @@ public class SegyReader
     public float YEnd { get; private set; }
     public float ZBegin { get; private set; }
     public float ZEnd { get; private set; }
-    public float MinValue { get; set; }
-    public float MaxValue { get; set; }
+    public float MinValue { get; set; } = float.MaxValue;
+    public float MaxValue { get; set; } = float.MinValue;
 
     private const int MB = 1024 * 1024;
     private const int GB = 1024 * MB;
@@ -128,6 +128,13 @@ public class SegyReader
                 var v = chunk.Slice(TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE);
                 ReadOnlySpan<float> x = ParseValue(ref v);
                 x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
+                for (int j = 0; j < x.Length; j++)
+                {
+                    if (MinValue > x[j])
+                        MinValue = x[j];
+                    if (MaxValue < x[j])
+                        MaxValue = x[j];
+                }
                 i++;
             }
             offset += size;
@@ -153,15 +160,15 @@ public class SegyReader
             RandomAccess.Read(readHandler, array.AsSpan(), offset);            
             foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
             {
-                Span<byte> traceByte = new byte[_traceByteSize];
-                chunk.Slice(0, TRACE_HEADER_SIZE).CopyTo(traceByte.Slice(0, TRACE_HEADER_SIZE));
+                using var traceByte = new NativeMemoryArray<byte>(_traceByteSize);
+                chunk.Slice(0, TRACE_HEADER_SIZE).CopyTo(traceByte.AsSpan(0, TRACE_HEADER_SIZE));
                 for (int j = 0; j < SampleSize; j++)
                 {
-                    Span<byte> sample = FromSingle((float)traces[i]);
-                    sample.CopyTo(traceByte.Slice(TRACE_HEADER_SIZE + j * sample.Length, sample.Length));
+                    Span<byte> sample = FromSingle(traces[i]);
+                    sample.CopyTo(traceByte.AsSpan(TRACE_HEADER_SIZE + j * sample.Length, sample.Length));
                     i++;
                 }
-                RandomAccess.Write(writeHandler, traceByte, offset);
+                RandomAccess.Write(writeHandler, traceByte.AsSpan(), offset);
                 offset += _traceByteSize;
             }            
         }
