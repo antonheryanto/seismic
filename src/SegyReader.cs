@@ -128,12 +128,12 @@ public class SegyReader
                 var v = chunk.Slice(TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE);
                 ReadOnlySpan<float> x = ParseValue(ref v);
                 x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
-                for (int j = 0; j < x.Length; j++)
+                for (int k = 0; k < x.Length; k++)
                 {
-                    if (MinValue > x[j])
-                        MinValue = x[j];
-                    if (MaxValue < x[j])
-                        MaxValue = x[j];
+                    if (MinValue > x[k])
+                        MinValue = x[k];
+                    if (MaxValue < x[k])
+                        MaxValue = x[k];
                 }
                 i++;
             }
@@ -148,10 +148,10 @@ public class SegyReader
         using var writeHandler = File.OpenHandle(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite);
         var fileSize = RandomAccess.GetLength(readHandler);
         var size = fileSize < 2L * GB ? fileSize : (2L * GB / _traceByteSize) * _traceByteSize;
+        using var header = new NativeMemoryArray<byte>(HEADER_SIZE);
+        RandomAccess.Read(readHandler, header.AsSpan(), 0);
+        RandomAccess.Write(writeHandler, header.AsSpan(), 0);
         long offset = HEADER_SIZE;
-        var header = new byte[HEADER_SIZE];
-        RandomAccess.Read(readHandler, header, 0);
-        RandomAccess.Write(writeHandler, header, 0);
         long i = 0;
         while (offset < fileSize)
         {
