@@ -110,6 +110,42 @@ public class SegyReader
     }
 
 #if NET6_0_OR_GREATER
+
+    public NativeMemoryArray<float> TraceByInline(int index = 0, int length = 1)
+    {
+        if (index > InLineSize || InLineSize < (index + length))
+            return NativeMemoryArray<float>.Empty;
+        var traces = new NativeMemoryArray<float>(SampleSize * CrossLineSize * length);
+        long targetSize = HEADER_SIZE + (index + 1) * CrossLineSize * _traceByteSize * length;
+        var chunkSize = targetSize < 2L * GB ? targetSize : (2L * GB / _traceByteSize) * _traceByteSize;
+        long offset = HEADER_SIZE + index * CrossLineSize * _traceByteSize;
+        long i = 0;
+        using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
+        while (offset < targetSize)
+        {
+            var arraySize = targetSize - offset > chunkSize ? chunkSize : targetSize - offset;
+            using var array = new NativeMemoryArray<byte>(arraySize);
+            RandomAccess.Read(handle, array.AsSpan(), offset);
+            foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+            {
+                var v = chunk[TRACE_HEADER_SIZE.._traceByteSize];
+                ReadOnlySpan<float> x = ParseValue(ref v);
+                x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
+                for (int k = 0; k < x.Length; k++)
+                {
+                    if (MinValue > x[k])
+                        MinValue = x[k];
+                    if (MaxValue < x[k])
+                        MaxValue = x[k];
+                }
+                i++;
+            }
+            offset += chunkSize;
+        }
+
+        return traces;
+    }
+
     public NativeMemoryArray<float> AsNativeMemoryArray()
     {
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
@@ -232,7 +268,7 @@ public class SegyReader
         for (int i = 0;i < nTrace; i++)
             t[i] = ParseTraceHeader(traceBytes.Slice(_traceByteSize * i, TRACE_HEADER_SIZE));
 
-        var inLineIndex = t[0][73] > 0 ? 73 : 1;
+        var inLineIndex = t[0][73] > 0 ? 73 : 0;
         var xLineIndex = t[0][74] > 0 ? 74 : 5;
         if (inLineIndex == 73 && xLineIndex == 5)
             xLineIndex = 74;
