@@ -115,7 +115,9 @@ public class SegyReader
     {
         if (index > InLineSize || InLineSize < (index + length))
             return NativeMemoryArray<float>.Empty;
-        var traces = new NativeMemoryArray<float>(SampleSize * CrossLineSize * length);
+        var min = float.MaxValue;
+        var max = float.MinValue;
+        var traces = new NativeMemoryArray<float>((SampleSize * CrossLineSize * length) + 2);
         long targetSize = HEADER_SIZE + (index + 1) * CrossLineSize * _traceByteSize * length;
         var chunkSize = targetSize < 2L * GB ? targetSize : (2L * GB / _traceByteSize) * _traceByteSize;
         long offset = HEADER_SIZE + index * CrossLineSize * _traceByteSize;
@@ -133,16 +135,18 @@ public class SegyReader
                 x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
                 for (int k = 0; k < x.Length; k++)
                 {
-                    if (MinValue > x[k])
-                        MinValue = x[k];
-                    if (MaxValue < x[k])
-                        MaxValue = x[k];
+                    if (min > x[k])
+                        min = x[k];
+                    if (max < x[k])
+                        max = x[k];
                 }
                 i++;
             }
             offset += chunkSize;
         }
 
+		traces[traces.Length - 2] = min;
+		traces[traces.Length - 1] = max;
         return traces;
     }
 
@@ -274,7 +278,9 @@ public class SegyReader
             xLineIndex = 74;
         InLineStep = t[1][inLineIndex] - t[0][inLineIndex];
         CrossLineStep = t[1][xLineIndex] - t[0][xLineIndex];
-        var scalar = Math.Abs(t[0][20]);
+        InlineBegin = t[0][inLineIndex];
+		CrossLineBegin = t[0][xLineIndex];
+		var scalar = Math.Abs(t[0][20]);
         if (scalar == 0)
             scalar = 1;
         SampleInterval = t[0][39] > 0 ? t[0][39] / 1000 : 0;
@@ -290,8 +296,11 @@ public class SegyReader
         var tN = ParseTraceHeader(traceBytes.Slice(0, TRACE_HEADER_SIZE));
         XEnd = (tN[71] > 0 ? tN[71] : tN[21]) / scalar;
         YEnd = (tN[72] > 0 ? tN[72] : tN[22]) / scalar;
+        InlineEnd = tN[inLineIndex];
+        CrossLineEnd = tN[xLineIndex];
 
-        pool.Return(buffer);
+
+		pool.Return(buffer);
 
         if (InLineStep > 0)
             InLineSize = 1 + (tN[inLineIndex] - t[0][inLineIndex]) / InLineStep;

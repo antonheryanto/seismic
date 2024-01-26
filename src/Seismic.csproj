@@ -1,12 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net6.0;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;netstandard2.0</TargetFrameworks>
     <LangVersion>Latest</LangVersion>
     <NullableReferenceTypes>true</NullableReferenceTypes>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Authors>Anton Heryanto Hasan</Authors>
-    <Version>0.7.0</Version>
+    <Version>0.8.0</Version>
     <Copyright>2022</Copyright>
     <Description>High performance seismic reader</Description>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -14,8 +14,8 @@
 
   <ItemGroup>
     <PackageReference Include="NativeMemoryArray" Version="1.2.0" />
-    <PackageReference Include="System.IO.Pipelines" Version="7.0.0" />
-	<PackageReference Include="System.Text.Encoding.CodePages" Version="7.0.0" />
+    <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
+	<PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
 
 </Project>
