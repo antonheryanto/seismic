@@ -6,10 +6,12 @@
     <NullableReferenceTypes>true</NullableReferenceTypes>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Authors>Anton Heryanto Hasan</Authors>
-    <Version>0.8.0</Version>
+    <Version>0.8.1</Version>
     <Copyright>2022</Copyright>
     <Description>High performance seismic reader</Description>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>

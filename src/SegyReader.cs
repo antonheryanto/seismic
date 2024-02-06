@@ -118,9 +118,10 @@ public class SegyReader
         var min = float.MaxValue;
         var max = float.MinValue;
         var traces = new NativeMemoryArray<float>((SampleSize * CrossLineSize * length) + 2);
-        long targetSize = HEADER_SIZE + (index + 1) * CrossLineSize * _traceByteSize * length;
-        var chunkSize = targetSize < 2L * GB ? targetSize : (2L * GB / _traceByteSize) * _traceByteSize;
-        long offset = HEADER_SIZE + index * CrossLineSize * _traceByteSize;
+        long inlineOffset = (long)CrossLineSize * _traceByteSize;
+		long targetSize = HEADER_SIZE + (index + 1) * inlineOffset * length;
+        long chunkSize = targetSize < 2L * GB ? targetSize : 2L * GB / _traceByteSize * _traceByteSize;
+        long offset = HEADER_SIZE + index * inlineOffset;
         long i = 0;
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
         while (offset < targetSize)
