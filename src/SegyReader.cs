@@ -4,7 +4,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Pipelines;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -65,7 +64,7 @@ public class SegyReader
     private int _traceByteSize;
     private long _fileSize;
     private bool _isLittleEndian = false;
-    private static readonly byte[] _traceHeaderIndex = new byte[] { 7, 4, 8, 2, 4, 46, 5, 12, 1, 2, 2 };
+    private static readonly byte[] _traceHeaderIndex = [7, 4, 8, 2, 4, 46, 5, 12, 1, 2, 2];
 
     private int GetValueSize() => Format switch
     {
@@ -110,6 +109,131 @@ public class SegyReader
     }
 
 #if NET6_0_OR_GREATER
+	public NativeMemoryArray<float> GetTrace(int index = 0)
+	{
+		if (index < 0 || index > TraceSize - 1)
+			return NativeMemoryArray<float>.Empty;
+		var traces = new NativeMemoryArray<float>(SampleSize);
+		using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
+		long offset = HEADER_SIZE + index * _traceByteSize;
+		using var array = new NativeMemoryArray<byte>(_traceByteSize);
+		RandomAccess.Read(handle, array.AsSpan(), offset);
+		long i = 0;
+		foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+		{
+			var v = chunk[TRACE_HEADER_SIZE.._traceByteSize];
+			ReadOnlySpan<float> x = ParseValue(ref v);
+			x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
+			i++;
+		}
+
+		return traces;
+	}
+
+    public NativeMemoryArray<float> GetTraces(Range[] ranges)
+    {
+        List<List<int>> groups = [];
+        int count = 0;
+        for (int j = 0; j < ranges.Length; j++)
+        {
+            int[] indexes = new int[ranges[j].End.Value - ranges[j].Start.Value];
+            for (int i = ranges[j].Start.Value, k = 0; i < ranges[j].End.Value; i++, k++)
+                indexes[k] = i;
+            groups.Add([.. indexes]);
+            count += indexes.Length;
+        }
+        return GetTraces(groups, count);
+    }
+
+    public NativeMemoryArray<float> GetTraces(ReadOnlySpan<int> indexes)
+    {
+        if (indexes.IsEmpty || indexes.Length > TraceSize)
+            return NativeMemoryArray<float>.Empty;
+        if (indexes.Length == 1)
+            GetTrace(indexes[0]);
+        // find the serial indexes
+        List<List<int>> groups = [[indexes[0]]];
+        var count = 0;
+        for (int i = 1; i < indexes.Length; i++) {
+            var c = indexes[i];
+            if (Math.Abs(indexes[i - 1] - c) > 1)
+            {
+                count += groups[groups.Count - 1].Count;
+                groups.Add([c]);
+                continue;
+            }
+            groups[groups.Count - 1].Add(c);
+        }
+        count += groups[groups.Count - 1].Count;
+        return GetTraces(groups, count);
+    }
+
+    public NativeMemoryArray<float> GetTraces(List<List<int>> groups, int count = 0)
+    {
+        if (count == 0)
+        {
+            for (int i = 0; i < groups.Count; i++)
+                count += groups[i].Count;
+        }
+        var traces = new NativeMemoryArray<float>(SampleSize * count);
+        using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
+        for (int i = 0; i < groups.Count; i++)
+        {
+            long offset = HEADER_SIZE + groups[i][0] * _traceByteSize;
+            using var array = new NativeMemoryArray<byte>(_traceByteSize * groups[i].Count);
+            RandomAccess.Read(handle, array.AsSpan(), offset);
+            long j = 0;
+            foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+            {
+                var v = chunk[TRACE_HEADER_SIZE.._traceByteSize];
+                ReadOnlySpan<float> x = ParseValue(ref v);
+                x.CopyTo(traces.AsSpan(j * SampleSize, SampleSize));
+                j++;
+            }
+        }
+
+        return traces;
+    }
+
+    public NativeMemoryArray<float> TraceByCrossline(int index = 0, int length = 1)
+    {
+        if (index > CrossLineSize || CrossLineSize < (index + length))
+            return NativeMemoryArray<float>.Empty;
+        var min = float.MaxValue;
+        var max = float.MinValue;
+        var traces = new NativeMemoryArray<float>((SampleSize * InLineSize * length) + 2);
+        long offset = HEADER_SIZE + index  * _traceByteSize;
+        long i = 0;
+        using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
+        var fileSize = RandomAccess.GetLength(handle);
+        while (offset < fileSize)
+        {
+            using var array = new NativeMemoryArray<byte>(_traceByteSize * length);
+            RandomAccess.Read(handle, array.AsSpan(), offset);
+            long j = 0;
+            foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+            {
+                var v = chunk[TRACE_HEADER_SIZE.._traceByteSize];
+                ReadOnlySpan<float> x = ParseValue(ref v);
+                x.CopyTo(traces.AsSpan(i * SampleSize + (j * InLineSize * SampleSize), SampleSize));
+
+                for (int k = 0; k < x.Length; k++)
+                {
+                    if (min > x[k])
+                        min = x[k];
+                    if (max < x[k])
+                        max = x[k];
+                }
+                j++;
+            }
+            i++;
+            offset += (CrossLineSize * _traceByteSize) + (length - 1) * _traceByteSize;
+        }
+
+        traces[traces.Length - 2] = min;
+        traces[traces.Length - 1] = max;
+        return traces;
+    }
 
     public NativeMemoryArray<float> TraceByInline(int index = 0, int length = 1)
     {
@@ -226,7 +350,7 @@ public class SegyReader
 #if DEBUG
         option.MaxDegreeOfParallelism = 1;
 #endif
-        Parallel.For(0, traces.Length, option, i => {            
+        Parallel.For(0, traces.Length, option, i => {
             ReadOnlySpan<byte> bytes = buffer;
             var v = bytes.Slice(HEADER_SIZE + _traceByteSize * i + TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE);
             traces[i] = ParseValue(ref v);
