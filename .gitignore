@@ -2,3 +2,6 @@
 *.user
 bin
 obj
+/src/src.dll
+/src/src.lib
+/src/src.pdb

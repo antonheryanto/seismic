@@ -195,6 +195,48 @@ public class SegyReader
         return traces;
     }
 
+    // TODO
+    public NativeMemoryArray<float> TraceBySample(int index = 0, int length = 1)
+    {
+        if (index > SampleSize || SampleSize < (index + length))
+            return NativeMemoryArray<float>.Empty;
+        var min = float.MaxValue;
+        var max = float.MinValue;
+        var traces = new NativeMemoryArray<float>(TraceSize + 2);
+        long inlineOffset = (long)CrossLineSize * _traceByteSize;
+        long targetSize = HEADER_SIZE + (index + 1) * inlineOffset * length;
+        long chunkSize = targetSize < 2L * GB ? targetSize : 2L * GB / _traceByteSize * _traceByteSize;
+        long offset = HEADER_SIZE + index * inlineOffset;
+        long i = 0;
+        using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
+        var fileSize = RandomAccess.GetLength(handle);
+        while (offset < fileSize)
+        {
+            var arraySize = targetSize - offset > chunkSize ? chunkSize : targetSize - offset;
+            using var array = new NativeMemoryArray<byte>(arraySize);
+            RandomAccess.Read(handle, array.AsSpan(), offset);
+            foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+            {
+                var v = chunk[TRACE_HEADER_SIZE.._traceByteSize];
+                ReadOnlySpan<float> x = ParseValue(ref v);
+                x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
+                for (int k = 0; k < x.Length; k++)
+                {
+                    if (min > x[k])
+                        min = x[k];
+                    if (max < x[k])
+                        max = x[k];
+                }
+                i++;
+            }
+            offset += chunkSize;
+        }
+
+        traces[traces.Length - 2] = min;
+        traces[traces.Length - 1] = max;
+        return traces;
+    }
+
     public NativeMemoryArray<float> TraceByCrossline(int index = 0, int length = 1)
     {
         if (index > CrossLineSize || CrossLineSize < (index + length))
