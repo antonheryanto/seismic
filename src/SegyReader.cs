@@ -81,7 +81,9 @@ public class SegyReader
         ParseHeader();
     }
 
-    public void Write(string fileName, float[][] traces, int index = 0)
+
+    // TODO partial write
+    public void Write(string fileName, float[][] traces)
     {
         using var r = new FileStream(FileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using var w = File.OpenWrite(fileName);
@@ -109,26 +111,9 @@ public class SegyReader
     }
 
 #if NET6_0_OR_GREATER
-	public NativeMemoryArray<float> GetTrace(int index = 0)
-	{
-		if (index < 0 || index > TraceSize - 1)
-			return NativeMemoryArray<float>.Empty;
-		var traces = new NativeMemoryArray<float>(SampleSize);
-		using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
-		long offset = HEADER_SIZE + index * _traceByteSize;
-		using var array = new NativeMemoryArray<byte>(_traceByteSize);
-		RandomAccess.Read(handle, array.AsSpan(), offset);
-		long i = 0;
-		foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
-		{
-			var v = chunk[TRACE_HEADER_SIZE.._traceByteSize];
-			ReadOnlySpan<float> x = ParseValue(ref v);
-			x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
-			i++;
-		}
+    private readonly long _maxChunkSize = 5L * GB;
 
-		return traces;
-	}
+    // public NativeMemoryArray<float> GetTrace(int index = 0) => GetTraces([[index]], 1);
 
     public NativeMemoryArray<float> GetTraces(Range[] ranges)
     {
@@ -150,7 +135,7 @@ public class SegyReader
         if (indexes.IsEmpty || indexes.Length > TraceSize)
             return NativeMemoryArray<float>.Empty;
         if (indexes.Length == 1)
-            GetTrace(indexes[0]);
+            GetTraces([[..indexes]], 1);
         // find the serial indexes
         List<List<int>> groups = [[indexes[0]]];
         var count = 0;
@@ -168,7 +153,7 @@ public class SegyReader
         return GetTraces(groups, count);
     }
 
-    public NativeMemoryArray<float> GetTraces(List<List<int>> groups, int count = 0)
+    private NativeMemoryArray<float> GetTraces(List<List<int>> groups, int count = 0)
     {
         if (count == 0)
         {
@@ -195,37 +180,32 @@ public class SegyReader
         return traces;
     }
 
-    // TODO
     public NativeMemoryArray<float> TraceBySample(int index = 0, int length = 1)
     {
         if (index > SampleSize || SampleSize < (index + length))
             return NativeMemoryArray<float>.Empty;
         var min = float.MaxValue;
         var max = float.MinValue;
-        var traces = new NativeMemoryArray<float>(TraceSize + 2);
+        var traces = new NativeMemoryArray<float>((TraceSize * length) + 2);
         long inlineOffset = (long)CrossLineSize * _traceByteSize;
-        long targetSize = HEADER_SIZE + (index + 1) * inlineOffset * length;
-        long chunkSize = targetSize < 2L * GB ? targetSize : 2L * GB / _traceByteSize * _traceByteSize;
-        long offset = HEADER_SIZE + index * inlineOffset;
+        long chunkSize = inlineOffset < _maxChunkSize ? inlineOffset : (_maxChunkSize / _traceByteSize) * _traceByteSize;
+        long offset = HEADER_SIZE;
         long i = 0;
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
         var fileSize = RandomAccess.GetLength(handle);
         while (offset < fileSize)
         {
-            var arraySize = targetSize - offset > chunkSize ? chunkSize : targetSize - offset;
+            var arraySize = fileSize - offset > chunkSize ? chunkSize : fileSize - offset;
             using var array = new NativeMemoryArray<byte>(arraySize);
             RandomAccess.Read(handle, array.AsSpan(), offset);
             foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
             {
-                var v = chunk[TRACE_HEADER_SIZE.._traceByteSize];
-                ReadOnlySpan<float> x = ParseValue(ref v);
-                x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
-                for (int k = 0; k < x.Length; k++)
+                for (int j = 0; j < length; j++)
                 {
-                    if (min > x[k])
-                        min = x[k];
-                    if (max < x[k])
-                        max = x[k];
+                    var v = ToValue(chunk.Slice(TRACE_HEADER_SIZE + ((index + j) * _valueSize), _valueSize));
+                    traces[i + (j * TraceSize)] = v;
+                    min = Math.Min(min, v);
+                    max = Math.Max(max, v);
                 }
                 i++;
             }
@@ -261,10 +241,8 @@ public class SegyReader
 
                 for (int k = 0; k < x.Length; k++)
                 {
-                    if (min > x[k])
-                        min = x[k];
-                    if (max < x[k])
-                        max = x[k];
+                    min = Math.Min(min, x[k]);
+                    max = Math.Max(max, x[k]);
                 }
                 j++;
             }
@@ -286,7 +264,7 @@ public class SegyReader
         var traces = new NativeMemoryArray<float>((SampleSize * CrossLineSize * length) + 2);
         long inlineOffset = (long)CrossLineSize * _traceByteSize;
 		long targetSize = HEADER_SIZE + (index + 1) * inlineOffset * length;
-        long chunkSize = targetSize < 2L * GB ? targetSize : 2L * GB / _traceByteSize * _traceByteSize;
+        long chunkSize = targetSize < _maxChunkSize ? targetSize : _maxChunkSize / _traceByteSize * _traceByteSize;
         long offset = HEADER_SIZE + index * inlineOffset;
         long i = 0;
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
@@ -302,10 +280,8 @@ public class SegyReader
                 x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
                 for (int k = 0; k < x.Length; k++)
                 {
-                    if (min > x[k])
-                        min = x[k];
-                    if (max < x[k])
-                        max = x[k];
+                    min = Math.Min(min, x[k]);
+                    max = Math.Max(max, x[k]);
                 }
                 i++;
             }
@@ -337,10 +313,8 @@ public class SegyReader
                 x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
                 for (int k = 0; k < x.Length; k++)
                 {
-                    if (MinValue > x[k])
-                        MinValue = x[k];
-                    if (MaxValue < x[k])
-                        MaxValue = x[k];
+                    MinValue = Math.Min(MinValue, x[k]);
+                    MaxValue = Math.Max(MaxValue, x[k]);
                 }
                 i++;
             }
