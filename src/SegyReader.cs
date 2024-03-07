@@ -111,7 +111,7 @@ public class SegyReader
     }
 
 #if NET6_0_OR_GREATER
-    private readonly long _maxChunkSize = 5L * GB;
+    private readonly long _maxChunkSize = 2L * GB;
 
     // public NativeMemoryArray<float> GetTrace(int index = 0) => GetTraces([[index]], 1);
 
@@ -187,12 +187,12 @@ public class SegyReader
         var min = float.MaxValue;
         var max = float.MinValue;
         var traces = new NativeMemoryArray<float>((TraceSize * length) + 2);
-        long inlineOffset = (long)CrossLineSize * _traceByteSize;
-        long chunkSize = inlineOffset < _maxChunkSize ? inlineOffset : (_maxChunkSize / _traceByteSize) * _traceByteSize;
-        long offset = HEADER_SIZE;
-        long i = 0;
+        //long inlineOffset = (long)CrossLineSize * _traceByteSize;
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
         var fileSize = RandomAccess.GetLength(handle);
+        long offset = HEADER_SIZE;
+        long chunkSize = ((fileSize < _maxChunkSize ? fileSize : _maxChunkSize) - offset) / _traceByteSize * _traceByteSize;
+        long i = 0;
         while (offset < fileSize)
         {
             var arraySize = fileSize - offset > chunkSize ? chunkSize : fileSize - offset;
