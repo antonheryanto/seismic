@@ -164,7 +164,7 @@ public class SegyReader
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
         for (int i = 0; i < groups.Count; i++)
         {
-            long offset = HEADER_SIZE + groups[i][0] * _traceByteSize;
+            long offset = HEADER_SIZE + (1L * groups[i][0] * _traceByteSize);
             using var array = new NativeMemoryArray<byte>(_traceByteSize * groups[i].Count);
             RandomAccess.Read(handle, array.AsSpan(), offset);
             long j = 0;
