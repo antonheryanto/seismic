@@ -451,13 +451,13 @@ public class SegyReader
         {
             CrossLineSize = Math.Min(CrossLineSize, TraceSize); //handle 2d or incomplete data
             InLineSize = TraceSize / CrossLineSize;
-            InLineStep = (tN[inLineIndex] - t[0][inLineIndex]) / (InLineSize - 1);
+            InLineStep = InLineSize == 1 ? 1 : (tN[inLineIndex] - t[0][inLineIndex]) / (InLineSize - 1);
         } 
         else if (InLineSize > 0 && CrossLineSize == 0)
         {
             InLineSize = Math.Min(InLineSize, TraceSize); //handle 2d or incomplete data
             CrossLineSize = Math.Max(TraceSize / InLineSize, 1);
-            CrossLineStep = (tN[xLineIndex] - t[0][xLineIndex]) / (CrossLineSize - 1);
+            CrossLineStep = CrossLineSize == 1 ? 1 : (tN[xLineIndex] - t[0][xLineIndex]) / (CrossLineSize - 1);
         }
         else if (InLineSize == 0 && CrossLineSize == 0)
         {
