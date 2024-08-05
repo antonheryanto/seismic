@@ -263,8 +263,9 @@ public class SegyReader
         var max = float.MinValue;
         var traces = new NativeMemoryArray<float>((SampleSize * CrossLineSize * length) + 2);
         long inlineOffset = (long)CrossLineSize * _traceByteSize;
-		long targetSize = HEADER_SIZE + (index + 1) * inlineOffset * length;
-        long chunkSize = targetSize < _maxChunkSize ? targetSize : _maxChunkSize / _traceByteSize * _traceByteSize;
+        var size = inlineOffset * length;
+        long targetSize = HEADER_SIZE + (index + length) * inlineOffset;
+        long chunkSize = size < _maxChunkSize ? size : _maxChunkSize / _traceByteSize * _traceByteSize;
         long offset = HEADER_SIZE + index * inlineOffset;
         long i = 0;
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
@@ -451,13 +452,13 @@ public class SegyReader
         {
             CrossLineSize = Math.Min(CrossLineSize, TraceSize); //handle 2d or incomplete data
             InLineSize = TraceSize / CrossLineSize;
-            InLineStep = (tN[inLineIndex] - t[0][inLineIndex]) / (InLineSize - 1);
+            InLineStep = InLineSize == 1 ? 1 : (tN[inLineIndex] - t[0][inLineIndex]) / (InLineSize - 1);
         } 
         else if (InLineSize > 0 && CrossLineSize == 0)
         {
             InLineSize = Math.Min(InLineSize, TraceSize); //handle 2d or incomplete data
             CrossLineSize = Math.Max(TraceSize / InLineSize, 1);
-            CrossLineStep = (tN[xLineIndex] - t[0][xLineIndex]) / (CrossLineSize - 1);
+            CrossLineStep = CrossLineSize == 1 ? 1 : (tN[xLineIndex] - t[0][xLineIndex]) / (CrossLineSize - 1);
         }
         else if (InLineSize == 0 && CrossLineSize == 0)
         {
