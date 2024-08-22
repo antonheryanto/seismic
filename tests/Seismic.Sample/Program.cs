@@ -55,11 +55,4 @@ public class SeismicBenchmark
     [Params(1024 * 1024)]
     public int MinSize { get; set; }
 
-    //[Benchmark]
-    //public async Task<float[][]> SpanAsyncBased()
-    //{
-    //    var reader = new SegyReader(FILE);
-    //    return await reader.ReadTraceAsync(MinSize);
-    //}
-
 }
