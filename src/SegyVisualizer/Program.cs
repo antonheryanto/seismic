@@ -43,6 +43,4 @@ internal class Program : Window
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktopApp)
             desktopApp.Shutdown();
     }
-
-    
 }
