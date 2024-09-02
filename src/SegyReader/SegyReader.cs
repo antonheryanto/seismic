@@ -286,7 +286,7 @@ public class SegyReader
                 }
                 i++;
             }
-            offset += chunkSize;
+            offset += arraySize;
         }
 
 		traces[traces.Length - 2] = min;
@@ -339,7 +339,7 @@ public class SegyReader
         {
             var arraySize = fileSize - offset > size ? size : fileSize - offset;
             using var array = new NativeMemoryArray<byte>(arraySize);
-            RandomAccess.Read(readHandler, array.AsSpan(), offset);            
+            RandomAccess.Read(readHandler, array.AsSpan(), offset);
             foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
             {
                 using var traceByte = new NativeMemoryArray<byte>(_traceByteSize);
