@@ -182,34 +182,37 @@ public class SegyReader
 
     public NativeMemoryArray<float> TraceBySample(int index = 0, int length = 1)
     {
-        if (index > SampleSize || SampleSize < (index + length))
+        if (index < 0 || index > SampleSize || SampleSize < (index + length))
             return NativeMemoryArray<float>.Empty;
         var min = float.MaxValue;
         var max = float.MinValue;
         var traces = new NativeMemoryArray<float>((TraceSize * length) + 2);
-        //long inlineOffset = (long)CrossLineSize * _traceByteSize;
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
-        var fileSize = RandomAccess.GetLength(handle);
+        var targetSize = RandomAccess.GetLength(handle);
+        int inlineOffset = CrossLineSize * _traceByteSize;
         long offset = HEADER_SIZE;
-        long chunkSize = ((fileSize < _maxChunkSize ? fileSize : _maxChunkSize) - offset) / _traceByteSize * _traceByteSize;
+        long chunkSize = targetSize < _maxChunkSize ? targetSize : _maxChunkSize / inlineOffset * inlineOffset;
         long i = 0;
-        while (offset < fileSize)
+        while (offset < targetSize)
         {
-            var arraySize = fileSize - offset > chunkSize ? chunkSize : fileSize - offset;
+            var arraySize = targetSize - offset > chunkSize ? chunkSize : targetSize - offset;
             using var array = new NativeMemoryArray<byte>(arraySize);
             RandomAccess.Read(handle, array.AsSpan(), offset);
-            foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+            foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(inlineOffset))
             {
-                for (int j = 0; j < length; j++)
+                for (int j = 0; j < CrossLineSize; j++)
                 {
-                    var v = ToValue(chunk.Slice(TRACE_HEADER_SIZE + ((index + j) * _valueSize), _valueSize));
-                    traces[i + (j * TraceSize)] = v;
-                    min = Math.Min(min, v);
-                    max = Math.Max(max, v);
+                    for (int k = 0; k < length; k++)
+                    {
+                        var v = ToValue(chunk.Slice(TRACE_HEADER_SIZE + (j * _traceByteSize) + ((index + k) * _valueSize), _valueSize));
+                        traces[(i * CrossLineSize) + j  + k] = v;
+                        min = Math.Min(min, v);
+                        max = Math.Max(max, v);
+                    }
                 }
                 i++;
             }
-            offset += chunkSize;
+            offset += arraySize;
         }
 
         traces[traces.Length - 2] = min;
@@ -219,36 +222,40 @@ public class SegyReader
 
     public NativeMemoryArray<float> TraceByCrossline(int index = 0, int length = 1)
     {
-        if (index > CrossLineSize || CrossLineSize < (index + length))
+        if (index < 0 || index > CrossLineSize || CrossLineSize < (index + length))
             return NativeMemoryArray<float>.Empty;
         var min = float.MaxValue;
         var max = float.MinValue;
         var traces = new NativeMemoryArray<float>((SampleSize * InLineSize * length) + 2);
-        long inlineOffset = (long) CrossLineSize * _traceByteSize;
-        long offset = HEADER_SIZE + index  * _traceByteSize;
-        long targetSize = HEADER_SIZE + ((InLineSize - 1) * inlineOffset) + ((index + length) * _traceByteSize);
-        long i = 0;
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
+        long targetSize = RandomAccess.GetLength(handle);
+        int inlineOffset = CrossLineSize * _traceByteSize;
+        long offset = HEADER_SIZE;
+        long chunkSize = targetSize < _maxChunkSize ? targetSize : _maxChunkSize / inlineOffset * inlineOffset;
+        long i = 0;
         while (offset < targetSize)
         {
-            using var array = new NativeMemoryArray<byte>(_traceByteSize * length);
+            var arraySize = targetSize - offset > chunkSize ? chunkSize : targetSize - offset;
+            using var array = new NativeMemoryArray<byte>(arraySize);
             RandomAccess.Read(handle, array.AsSpan(), offset);
-            long j = 0;
-            foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
+            foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(inlineOffset))
             {
-                var v = chunk[TRACE_HEADER_SIZE.._traceByteSize];
-                ReadOnlySpan<float> x = ParseValue(ref v);
-                x.CopyTo(traces.AsSpan(i * SampleSize + (j * InLineSize * SampleSize), SampleSize));
-
-                for (int k = 0; k < x.Length; k++)
+                for (int j = 0; j < length; j++)
                 {
-                    min = Math.Min(min, x[k]);
-                    max = Math.Max(max, x[k]);
+                    var l = (index + j) * _traceByteSize;
+                    var v = chunk[(l + TRACE_HEADER_SIZE)..(l + _traceByteSize)];
+                    ReadOnlySpan<float> x = ParseValue(ref v);
+                    x.CopyTo(traces.AsSpan((j * inlineOffset) + i * SampleSize, SampleSize));
+                    for (int k = 0; k < x.Length; k++)
+                    {
+                        min = Math.Min(min, x[k]);
+                        max = Math.Max(max, x[k]);
+                    }
+                    i++;
                 }
-                j++;
             }
-            i++;
-            offset += inlineOffset;
+
+            offset += arraySize;
         }
 
         traces[traces.Length - 2] = min;
@@ -258,7 +265,7 @@ public class SegyReader
 
     public NativeMemoryArray<float> TraceByInline(int index = 0, int length = 1)
     {
-        if (index > InLineSize || InLineSize < (index + length))
+        if (index < 0 || index > InLineSize || InLineSize < (index + length))
             return NativeMemoryArray<float>.Empty;
         var min = float.MaxValue;
         var max = float.MinValue;
