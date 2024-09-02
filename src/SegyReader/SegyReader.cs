@@ -224,11 +224,12 @@ public class SegyReader
         var min = float.MaxValue;
         var max = float.MinValue;
         var traces = new NativeMemoryArray<float>((SampleSize * InLineSize * length) + 2);
+        long inlineOffset = (long) CrossLineSize * _traceByteSize;
         long offset = HEADER_SIZE + index  * _traceByteSize;
+        long targetSize = HEADER_SIZE + ((InLineSize - 1) * inlineOffset) + ((index + length) * _traceByteSize);
         long i = 0;
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
-        var fileSize = RandomAccess.GetLength(handle);
-        while (offset < fileSize)
+        while (offset < targetSize)
         {
             using var array = new NativeMemoryArray<byte>(_traceByteSize * length);
             RandomAccess.Read(handle, array.AsSpan(), offset);
@@ -247,7 +248,7 @@ public class SegyReader
                 j++;
             }
             i++;
-            offset += (CrossLineSize * _traceByteSize) + (length - 1) * _traceByteSize;
+            offset += inlineOffset;
         }
 
         traces[traces.Length - 2] = min;

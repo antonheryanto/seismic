@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using R3;
-using System;
 
 namespace AvaloniaPlot;
 
@@ -16,7 +15,6 @@ internal class Program : Window
             .UsePlatformDetect()
             .AfterSetup(b => b.Instance?.Styles.Add(new Avalonia.Themes.Fluent.FluentTheme()))
             .UseR3()
-            //.Start(static (app, args) => app.Run(new Program()), args);
             .SetupWithLifetime(lifetime);
 
         lifetime.MainWindow = new Program();
@@ -37,10 +35,7 @@ internal class Program : Window
 
     // pass frameProvider
     protected override void OnLoaded(Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        Observable.EveryValueChanged(this, x => x.Width, frameProvider)
-            .Subscribe(x => Title = $"Width of {x}");
-    }
+        => Observable.EveryValueChanged(this, x => x.Width, frameProvider).Subscribe(x => Title = $"Width of {x}");
 
     protected override void OnClosed(EventArgs e)
     {
