@@ -1,18 +1,13 @@
 ﻿using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Reports;
-using BenchmarkDotNet.Running;
-using System;
-using System.Buffers.Binary;
-using System.Diagnostics.Metrics;
-using System.Threading.Tasks;
+using Seismic;
 
-namespace Seismic.Sample;
+namespace SegyReaderTest;
 
 class Program
 {
     static void Main(string[] args)
     {
-        var a = @"C:\Projects\TechApps\RockSeisCloud\data\data\2D_seismic\2D_07-14.sgy";
+        // var a = @"C:\Projects\TechApps\RockSeisCloud\data\data\2D_seismic\2D_07-14.sgy";
         var d = @"C:\Projects\TechApps\ReSeis\data\Baram_Res\pp_psdm\new_cropped_scaled_apsdm_2017.sgy";
         //var b = @"C:\Projects\TechApps\RockSeismod\data\Kirchhoff_PreSTM_time.segy";
         //var c = @"C:\Projects\TechApps\RockSeismod\data\T07_Angsi_stack_0_48deg_LineERivisit_E02.sgy";
@@ -37,12 +32,12 @@ public class SeismicBenchmark
 {
     const string FILE = @"C:\Projects\TechApps\entd\data\F3_demo.sgy";
 
-    [Benchmark]
-    public float[][] ArrayBased()
-    {
-        var reader = new TechApps.Seismic.SegyReader(FILE);
-        return reader.Traces;
-    }
+    // [Benchmark]
+    // public float[][] ArrayBased()
+    // {
+    //     var reader = new TechApps.Seismic.SegyReader(FILE);
+    //     return reader.Traces;
+    // }
 
     [Benchmark]
     public float[][] SpanBased()
