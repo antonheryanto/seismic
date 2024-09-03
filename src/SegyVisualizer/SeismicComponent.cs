@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Interactivity;
 using Avalonia.Markup.Declarative;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -7,7 +6,6 @@ using R3;
 using ScottPlot.Avalonia;
 using ScottPlot.Panels;
 using Seismic;
-using System;
 
 namespace AvaloniaPlot;
 
