@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SegyReader", "src\SegyReade
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SegyReaderTest", "src\SegyReaderTest\SegyReaderTest.csproj", "{57EC2970-3AE3-4595-98E1-8D1228F692E7}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SegyVisualizer", "src\SegyVisualizer\SegyVisualizer.csproj", "{25D72982-4ADD-4C38-BE87-CCFE74453853}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SegyViewer", "src\SegyViewer\SegyViewer.csproj", "{25D72982-4ADD-4C38-BE87-CCFE74453853}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using R3;
 
-namespace AvaloniaPlot;
+namespace SegyViewer;
 
 internal class Program : Window
 {

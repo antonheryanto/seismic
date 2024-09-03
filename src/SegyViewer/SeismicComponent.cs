@@ -7,7 +7,7 @@ using ScottPlot.Avalonia;
 using ScottPlot.Panels;
 using Seismic;
 
-namespace AvaloniaPlot;
+namespace SegyViewer;
 
 public class SeismicComponent : ComponentBase
 {
@@ -67,7 +67,7 @@ public class SeismicComponent : ComponentBase
     {
         if (_segy.FileName is null)
             return;
-        var data = iLine > -1 ? PlotData(_segy.TraceByInline((iLine - _segy.InlineBegin)/_segy.InLineStep).AsSpan(), _segy.SampleSize, _segy.CrossLineSize)
+        var data = iLine > -1 ? PlotData(_segy.TraceByInline((iLine - _segy.InlineBegin)/_segy.InLineStep).AsSpan(), _segy.SampleSize, _segy.CrossLineSize, static (min, max, v) => Filter(min, max, v))
             : (xLine > -1 ? PlotData(_segy.TraceByCrossline((xLine - _segy.CrossLineBegin)/_segy.CrossLineStep).AsSpan(), _segy.SampleSize, _segy.InLineSize)
             : PlotData(_segy.TraceBySample(zLine).AsSpan(), _segy.CrossLineSize, _segy.InLineSize));
         var plot = _avPlot.Plot;
@@ -83,21 +83,25 @@ public class SeismicComponent : ComponentBase
         _avPlot.Refresh();
     }
 
-    public static double[,] PlotData(ReadOnlySpan<float> v, int height, int width = 1)
+    static double Filter(float min, float max, float v, double filter = 0.2)
+    {
+        var o = v / Math.Max(Math.Abs(min), max); // (v - min) / (max - min);
+        return o < filter ? 0 : o;
+    }
+
+    public static double[,] PlotData(ReadOnlySpan<float> v, int height, int width = 1, Func<float, float, float, double>? filter = null)
     {
         var o = new double[height, width];
         if (v.Length == 0)
             return o;
-        //var min = v[^2];
-        //var max = v[^1];
+        var min = v[^2];
+        var max = v[^1];
         for (int j = 0, k = 0; j < o.GetLength(1); j++)
         {
             for (int i = 0; i < o.GetLength(0); i++, k++)
             {
-                o[i, j] = v[k];
-                //o[i, j] = v[k] / max; //(v[k] - min)/(max - min);
-                //if (o[i, j] < 0.2)
-                //    o[i, j] = 0;
+                o[i, j] = filter is null ? v[k] : filter.Invoke(min, max, v[k]);
+
             }
         }
         return o;
