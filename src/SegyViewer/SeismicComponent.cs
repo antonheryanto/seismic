@@ -33,17 +33,24 @@ public class SeismicComponent : ComponentBase
     protected override object Build() => new Grid().Rows("Auto, *, Auto").Children(
         new AvaPlot().Ref(out _avPlot).Row(1),
         new Border().Row(0).BorderThickness(0, 1).BorderBrush(Brushes.LightGray).Margin(0).Padding(10, 5).Child(
-            new Grid().Cols("50, *, 50, *, 50, *, 50").Children(
+            new Grid().Cols("*, *, 80, *, 80, *, 80,*").Children(
                 new Button().Content("Open").OnClick(async(e) => await LoadFile()),
                 new Slider().Col(1).Ref(out _slider).Value(() => _iLine.Value, onChanged: v => _iLine.Value = (int)v),
                 new TextBox().Col(2).Text(() => _iLine.Value.ToString()).OnTextChanged((e) => ParseText(e, _slider)),
                 new Slider().Col(3).Margin(10, 0).Ref(out _slider2).Value(() => _xLine.Value, onChanged: v => _xLine.Value = (int)v),
                 new TextBox().Col(4).Text(() => _xLine.Value.ToString()).OnTextChanged((e) => ParseText(e, _slider2)),
                 new Slider().Col(5).Margin(10, 0).Ref(out _slider3).Value(() => _zLine.Value, onChanged: v => _zLine.Value = (int)v),
-                new TextBox().Col(6).Text(() => _zLine.Value.ToString()).OnTextChanged((e) => ParseText(e, _slider3))
+                new TextBox().Col(6).Text(() => _zLine.Value.ToString()).OnTextChanged((e) => ParseText(e, _slider3)),
+                new Button().Margin(10,0).Col(7).Content("Run").OnClick(async (e) => await Save())
             )
         )
     );
+
+    async Task Save()
+    {
+        using var s = _segy.AsNativeMemoryArray();
+        _segy.Write("", s);
+    }
 
     async Task LoadFile()
     {
@@ -67,9 +74,9 @@ public class SeismicComponent : ComponentBase
     {
         if (_segy.FileName is null)
             return;
-        var data = iLine > -1 ? PlotData(_segy.TraceByInline((iLine - _segy.InlineBegin)/_segy.InLineStep).AsSpan(), _segy.SampleSize, _segy.CrossLineSize, static (min, max, v) => Filter(min, max, v))
-            : (xLine > -1 ? PlotData(_segy.TraceByCrossline((xLine - _segy.CrossLineBegin)/_segy.CrossLineStep).AsSpan(), _segy.SampleSize, _segy.InLineSize)
-            : PlotData(_segy.TraceBySample(zLine).AsSpan(), _segy.CrossLineSize, _segy.InLineSize));
+        var data = iLine > -1 ? PlotData(_segy.TraceByInline((iLine - _segy.InlineBegin) / _segy.InLineStep).AsSpan(), _segy.SampleSize, _segy.CrossLineSize)//, static (min, max, v) => Filter(min, max, v))
+            : (xLine > -1 ? PlotData(_segy.TraceByCrossline((xLine - _segy.CrossLineBegin) / _segy.CrossLineStep).AsSpan(), _segy.SampleSize, _segy.InLineSize)//, static (min, max, v) => Filter(min, max, v))
+            : PlotData(_segy.TraceBySample(zLine).AsSpan(), _segy.CrossLineSize, _segy.InLineSize));//, static (min, max, v) => Filter(min, max, v)));
         var plot = _avPlot.Plot;
         plot.Clear();
         if (_cb is not null)

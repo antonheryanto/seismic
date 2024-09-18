@@ -81,7 +81,7 @@ public class SegyReader
         ParseHeader();
     }
 
-
+#if NET8_0_OR_LOWER
     // TODO partial write
     public void Write(string fileName, float[][] traces)
     {
@@ -109,6 +109,7 @@ public class SegyReader
         }
         w.Close();
     }
+#endif
 
 #if NET6_0_OR_GREATER
     private readonly long _maxChunkSize = 2L * GB;
@@ -350,7 +351,7 @@ public class SegyReader
         using var handle = File.OpenHandle(FileName, FileMode.Open, FileAccess.Read);
         var fileSize = RandomAccess.GetLength(handle);
         var traces = new NativeMemoryArray<float>(TraceSize * SampleSize);
-        var size = fileSize < 2L * GB ? fileSize : (2L * GB / _traceByteSize) * _traceByteSize;
+        var size = fileSize < _maxChunkSize ? fileSize : (_maxChunkSize / _traceByteSize) * _traceByteSize;
         long offset = HEADER_SIZE;
         long i = 0;
         while (offset < fileSize)
@@ -360,7 +361,7 @@ public class SegyReader
             RandomAccess.Read(handle, array.AsSpan(), offset);
             foreach (ReadOnlySpan<byte> chunk in array.AsSpanSequence(_traceByteSize))
             {
-                var v = chunk.Slice(TRACE_HEADER_SIZE, _traceByteSize - TRACE_HEADER_SIZE);
+                var v = chunk[TRACE_HEADER_SIZE.._traceByteSize];
                 ReadOnlySpan<float> x = ParseValue(ref v);
                 x.CopyTo(traces.AsSpan(i * SampleSize, SampleSize));
                 for (int k = 0; k < x.Length; k++)
