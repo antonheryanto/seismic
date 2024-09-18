@@ -3,9 +3,11 @@ using Avalonia.Markup.Declarative;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using R3;
+using ScottPlot;
 using ScottPlot.Avalonia;
 using ScottPlot.Panels;
 using Seismic;
+using System.Linq;
 
 namespace SegyViewer;
 
@@ -20,6 +22,14 @@ public class SeismicComponent : ComponentBase
     private Slider _slider = new();
     private Slider _slider2 = new();
     private Slider _slider3 = new();
+    private int _textBoxWidth = 80;
+    private static readonly Dictionary<string, IColormap> _colorList = new IColormap[] {
+        new ScottPlot.Colormaps.Grayscale(),
+        new ScottPlot.Colormaps.Jet(),
+        new ScottPlot.Colormaps.Balance()
+    }.ToDictionary(k => k.Name, v => v);
+
+    private IColormap _colorMap = new ScottPlot.Colormaps.Grayscale();
 
     public SeismicComponent()
     {
@@ -33,26 +43,35 @@ public class SeismicComponent : ComponentBase
     protected override object Build() => new Grid().Rows("Auto, *, Auto").Children(
         new AvaPlot().Ref(out _avPlot).Row(1),
         new Border().Row(0).BorderThickness(0, 1).BorderBrush(Brushes.LightGray).Margin(0).Padding(10, 5).Child(
-            new Grid().Cols("*, *, 80, *, 80, *, 80,*").Children(
-                new Button().Content("Open").OnClick(async(e) => await LoadFile()),
+            new Grid().Cols($"*, *, {_textBoxWidth}, *, {_textBoxWidth}, *, {_textBoxWidth},*").Children(
+                new Button().Content("Open").OnClick(async (e) => await LoadFile()),
                 new Slider().Col(1).Ref(out _slider).Value(() => _iLine.Value, onChanged: v => _iLine.Value = (int)v),
                 new TextBox().Col(2).Text(() => _iLine.Value.ToString()).OnTextChanged((e) => ParseText(e, _slider)),
                 new Slider().Col(3).Margin(10, 0).Ref(out _slider2).Value(() => _xLine.Value, onChanged: v => _xLine.Value = (int)v),
                 new TextBox().Col(4).Text(() => _xLine.Value.ToString()).OnTextChanged((e) => ParseText(e, _slider2)),
                 new Slider().Col(5).Margin(10, 0).Ref(out _slider3).Value(() => _zLine.Value, onChanged: v => _zLine.Value = (int)v),
                 new TextBox().Col(6).Text(() => _zLine.Value.ToString()).OnTextChanged((e) => ParseText(e, _slider3)),
-                new Button().Margin(10,0).Col(7).Content("Run").OnClick(async (e) => await Save())
+                //new Button().Margin(10,0).Col(7).Content("Run").OnClick(async (e) => await Save()),
+                new ComboBox().Col(7).Items().ItemsSource(_colorList.Keys).OnSelectionChanged((e) => ChangeColorMap(e.AddedItems[0]?.ToString()))
             )
         )
     );
 
-    async Task Save()
+    private void ChangeColorMap(string? color)
     {
-        using var s = _segy.AsNativeMemoryArray();
-        _segy.Write("", s);
+        if (color is null || !_colorList.TryGetValue(color, out var cm))
+            return;
+        _colorMap = cm;
+        Plot();
     }
 
-    async Task LoadFile()
+    //async Task Save()
+    //{
+    //    using var s = _segy.AsNativeMemoryArray();
+    //    _segy.Write("", s);
+    //}
+
+    private async Task LoadFile()
     {
         if (!(TopLevel.GetTopLevel(this) is var t && t is not null))
             return;
@@ -67,7 +86,7 @@ public class SeismicComponent : ComponentBase
         _slider3.Minimum(0).Maximum(_segy.SampleSize).Value(0);
     }
 
-    void ParseText(TextChangedEventArgs e, Slider s) => s.Value = e.Source is TextBox v 
+    private void ParseText(TextChangedEventArgs e, Slider s) => s.Value = e.Source is TextBox v 
         && int.TryParse(v.Text, out var vi) && vi >= s.Minimum && vi <= s.Maximum ? vi : s.Value;
 
     void Plot(int iLine = -1, int xLine = -1, int zLine = -1)
@@ -85,12 +104,12 @@ public class SeismicComponent : ComponentBase
         plot.Axes.SetLimitsX(0, data.GetLength(1));
         plot.Axes.SetLimitsY(data.GetLength(0), 0);
         var hm = plot.Add.Heatmap(data);
-        hm.Colormap = new ScottPlot.Colormaps.Grayscale();
+        hm.Colormap = _colorMap;
         _cb = plot.Add.ColorBar(hm);
         _avPlot.Refresh();
     }
 
-    static double Filter(float min, float max, float v, double filter = 0.2)
+    private static double Filter(float min, float max, float v, double filter = 0.2)
     {
         var o = v / Math.Max(Math.Abs(min), max); // (v - min) / (max - min);
         return o < filter ? 0 : o;
