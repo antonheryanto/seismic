@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Markup.Declarative;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -19,17 +20,14 @@ public class SeismicComponent : ComponentBase
     private SegyReader _segy = new();
     private AvaPlot _avPlot = new();
     private ColorBar? _cb = null;
-    private Slider _slider = new();
-    private Slider _slider2 = new();
-    private Slider _slider3 = new();
     private readonly int _textBoxWidth = 80;
+    private IColormap _colorMap = new ScottPlot.Colormaps.Grayscale();
     private static readonly Dictionary<string, IColormap> _colorList = new IColormap[] {
         new ScottPlot.Colormaps.Grayscale(),
         new ScottPlot.Colormaps.Jet(),
         new ScottPlot.Colormaps.Balance()
     }.ToDictionary(k => k.Name, v => v);
 
-    private IColormap _colorMap = new ScottPlot.Colormaps.Grayscale();
 
     public SeismicComponent()
     {
@@ -38,40 +36,35 @@ public class SeismicComponent : ComponentBase
         _zLine.Subscribe((z) => Plot(zLine: z));
     }
 
+
     protected override StyleGroup? BuildStyles() => [];// [new Style<Grid>().Background(Brushes.White)];
 
     protected override object Build() => new Grid().Rows("Auto, *, Auto").Children(
         new AvaPlot().Ref(out _avPlot).Row(1),
         new Border().Row(0).BorderThickness(0, 1).BorderBrush(Brushes.LightGray).Margin(0).Padding(10, 5).Child(
-            new Grid().Cols($"*, *, {_textBoxWidth}, *, {_textBoxWidth}, *, {_textBoxWidth},*").Children(
-                new Button().Content("Open").OnClick(async (e) => await LoadFile()),
-                new Slider().Col(1).Ref(out _slider).Value(() => _iLine.Value, onChanged: v => _iLine.Value = (int)v),
-                new TextBox().Col(2).Text(() => _iLine.Value.ToString()).OnTextChanged((e) => ParseText(e, _slider)),
-                new Slider().Col(3).Margin(10, 0).Ref(out _slider2).Value(() => _xLine.Value, onChanged: v => _xLine.Value = (int)v),
-                new TextBox().Col(4).Text(() => _xLine.Value.ToString()).OnTextChanged((e) => ParseText(e, _slider2)),
-                new Slider().Col(5).Margin(10, 0).Ref(out _slider3).Value(() => _zLine.Value, onChanged: v => _zLine.Value = (int)v),
-                new TextBox().Col(6).Text(() => _zLine.Value.ToString()).OnTextChanged((e) => ParseText(e, _slider3)),
-                //new Button().Margin(10,0).Col(7).Content("Run").OnClick(async (e) => await Save()),
-                new ComboBox().Col(7).Items().ItemsSource(_colorList.Keys).OnSelectionChanged((e) => ChangeColorMap(e.AddedItems[0]?.ToString()))
-            )
+            new Grid().Cols($"*, *, {_textBoxWidth}, *, {_textBoxWidth}, *, {_textBoxWidth},*").Children([
+                new Slider().Col(1).Ref(out var _slider).Value(() => _iLine.Value, onChanged: v => _iLine.Value = (int)v),
+                new Slider().Col(3).Margin(10, 0).Ref(out var _slider2).Value(() => _xLine.Value, onChanged: v => _xLine.Value = (int)v),
+                new Slider().Col(5).Margin(10, 0).Ref(out var _slider3).Value(() => _zLine.Value, onChanged: v => _zLine.Value = (int)v),
+
+                new Button().Content("Open").OnClick(async (e) => await LoadFile(_slider, _slider2, _slider3)),
+                new TextBox().Col(2).Text(() => _iLine.Value.ToString(), onChanged: v => ParseText(v, _slider)),
+                new TextBox().Col(4).Text(() => _xLine.Value.ToString(), onChanged: v => ParseText(v, _slider2)),
+                new TextBox().Col(6).Text(() => _zLine.Value.ToString(), onChanged: v => ParseText(v, _slider3)),
+                new ComboBox().Col(7).ItemsSource(_colorList.Keys).SelectedItem(() => _colorMap.Name, onChanged: ChangeColorMap),
+            ])
         )
     );
 
-    private void ChangeColorMap(string? color)
+    private void ChangeColorMap(object o)
     {
-        if (color is null || !_colorList.TryGetValue(color, out var cm))
+        if (o is not string color || color is null || !_colorList.TryGetValue(color, out var cm))
             return;
         _colorMap = cm;
         Plot(_iLine.Value);
     }
 
-    //async Task Save()
-    //{
-    //    using var s = _segy.AsNativeMemoryArray();
-    //    _segy.Write("", s);
-    //}
-
-    private async Task LoadFile()
+    private async Task LoadFile(Slider si, Slider sx, Slider sz)
     {
         if (!(TopLevel.GetTopLevel(this) is var t && t is not null))
             return;
@@ -81,15 +74,15 @@ public class SeismicComponent : ComponentBase
         if (r.Count == 0)
             return;
         _segy = new(r[0].Path.AbsolutePath);
-        _slider.Minimum(_segy.InlineBegin).Maximum(_segy.InlineEnd).Value(_segy.InlineBegin);
-        _slider2.Minimum(_segy.CrossLineBegin).Maximum(_segy.CrossLineEnd).Value(_segy.CrossLineBegin);
-        _slider3.Minimum(0).Maximum(_segy.SampleSize).Value(0);
+        si.Minimum(_segy.InlineBegin).Maximum(_segy.InlineEnd).Value(_segy.InlineBegin);
+        sx.Minimum(_segy.CrossLineBegin).Maximum(_segy.CrossLineEnd).Value(_segy.CrossLineBegin);
+        sz.Minimum(0).Maximum(_segy.SampleSize).Value(0);
     }
 
-    private static void ParseText(TextChangedEventArgs e, Slider s) => s.Value = e.Source is TextBox v 
-        && int.TryParse(v.Text, out var vi) && vi >= s.Minimum && vi <= s.Maximum ? vi : s.Value;
+    private static void ParseText(string v, Slider s) => 
+        s.Value = int.TryParse(v, out var vi) && vi >= s.Minimum && vi <= s.Maximum ? vi : s.Value;
 
-    void Plot(int iLine = -1, int xLine = -1, int zLine = -1)
+    private void Plot(int iLine = -1, int xLine = -1, int zLine = -1)
     {
         if (_segy.FileName is null)
             return;
@@ -125,7 +118,6 @@ public class SeismicComponent : ComponentBase
             for (int i = 0; i < o.GetLength(0); i++, k++)
             {
                 o[i, j] = filter is null ? v[k] : filter.Invoke(min, max, v[k]);
-
             }
         }
         return o;
