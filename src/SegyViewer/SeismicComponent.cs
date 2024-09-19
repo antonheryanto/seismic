@@ -22,7 +22,7 @@ public class SeismicComponent : ComponentBase
     private Slider _slider = new();
     private Slider _slider2 = new();
     private Slider _slider3 = new();
-    private int _textBoxWidth = 80;
+    private readonly int _textBoxWidth = 80;
     private static readonly Dictionary<string, IColormap> _colorList = new IColormap[] {
         new ScottPlot.Colormaps.Grayscale(),
         new ScottPlot.Colormaps.Jet(),
@@ -62,7 +62,7 @@ public class SeismicComponent : ComponentBase
         if (color is null || !_colorList.TryGetValue(color, out var cm))
             return;
         _colorMap = cm;
-        Plot();
+        Plot(_iLine.Value);
     }
 
     //async Task Save()
@@ -86,7 +86,7 @@ public class SeismicComponent : ComponentBase
         _slider3.Minimum(0).Maximum(_segy.SampleSize).Value(0);
     }
 
-    private void ParseText(TextChangedEventArgs e, Slider s) => s.Value = e.Source is TextBox v 
+    private static void ParseText(TextChangedEventArgs e, Slider s) => s.Value = e.Source is TextBox v 
         && int.TryParse(v.Text, out var vi) && vi >= s.Minimum && vi <= s.Maximum ? vi : s.Value;
 
     void Plot(int iLine = -1, int xLine = -1, int zLine = -1)
@@ -109,11 +109,9 @@ public class SeismicComponent : ComponentBase
         _avPlot.Refresh();
     }
 
-    private static double Filter(float min, float max, float v, double filter = 0.2)
-    {
-        var o = v / Math.Max(Math.Abs(min), max); // (v - min) / (max - min);
-        return o < filter ? 0 : o;
-    }
+    // (v - min) / (max - min);
+    //private static double Filter(float min, float max, float v, double filter = 0.2)
+    //    => (float)(v / Math.Max(Math.Abs(min), max)) < filter ? 0 : (float)(v / Math.Max(Math.Abs(min), max));
 
     public static double[,] PlotData(ReadOnlySpan<float> v, int height, int width = 1, Func<float, float, float, double>? filter = null)
     {
