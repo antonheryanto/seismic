@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Data;
 using Avalonia.Markup.Declarative;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -8,19 +7,18 @@ using ScottPlot;
 using ScottPlot.Avalonia;
 using ScottPlot.Panels;
 using Seismic;
-using System.Linq;
 
 namespace SegyViewer;
 
 public class SeismicComponent : ComponentBase
 {
+    private const int TEXT_WIDTH = 80;
     private readonly BindableReactiveProperty<int> _iLine = new(0);
     private readonly BindableReactiveProperty<int> _xLine = new(0);
     private readonly BindableReactiveProperty<int> _zLine = new(0);
     private SegyReader _segy = new();
     private AvaPlot _avPlot = new();
     private ColorBar? _cb = null;
-    private readonly int _textBoxWidth = 80;
     private IColormap _colorMap = new ScottPlot.Colormaps.Grayscale();
     private static readonly Dictionary<string, IColormap> _colorList = new IColormap[] {
         new ScottPlot.Colormaps.Grayscale(),
@@ -42,7 +40,7 @@ public class SeismicComponent : ComponentBase
     protected override object Build() => new Grid().Rows("Auto, *, Auto").Children(
         new AvaPlot().Ref(out _avPlot).Row(1),
         new Border().Row(0).BorderThickness(0, 1).BorderBrush(Brushes.LightGray).Margin(0).Padding(10, 5).Child(
-            new Grid().Cols($"*, *, {_textBoxWidth}, *, {_textBoxWidth}, *, {_textBoxWidth},*").Children([
+            new Grid().Cols($"*, *, {TEXT_WIDTH}, *, {TEXT_WIDTH}, *, {TEXT_WIDTH},*").Children([
                 new Slider().Col(1).Ref(out var _slider).Value(() => _iLine.Value, onChanged: v => _iLine.Value = (int)v),
                 new Slider().Col(3).Margin(10, 0).Ref(out var _slider2).Value(() => _xLine.Value, onChanged: v => _xLine.Value = (int)v),
                 new Slider().Col(5).Margin(10, 0).Ref(out var _slider3).Value(() => _zLine.Value, onChanged: v => _zLine.Value = (int)v),
