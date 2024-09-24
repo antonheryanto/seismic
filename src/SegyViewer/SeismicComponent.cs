@@ -41,10 +41,9 @@ public class SeismicComponent : ComponentBase
         new AvaPlot().Ref(out _avPlot).Row(1),
         new Border().Row(0).BorderThickness(0, 1).BorderBrush(Brushes.LightGray).Margin(0).Padding(10, 5).Child(
             new Grid().Cols($"*, *, {TEXT_WIDTH}, *, {TEXT_WIDTH}, *, {TEXT_WIDTH},*").Children([
-                new Slider().Col(1).Ref(out var _slider).Value(() => _iLine.Value, onChanged: v => _iLine.Value = (int)v),
-                new Slider().Col(3).Margin(10, 0).Ref(out var _slider2).Value(() => _xLine.Value, onChanged: v => _xLine.Value = (int)v),
-                new Slider().Col(5).Margin(10, 0).Ref(out var _slider3).Value(() => _zLine.Value, onChanged: v => _zLine.Value = (int)v),
-
+                new Slider().Col(1).Ref(out var _slider).Value(() => _iLine.Value, onChanged: v => _iLine.Value = (int)v).Margin(10, 0),
+                new Slider().Col(3).Ref(out var _slider2).Value(() => _xLine.Value, onChanged: v => _xLine.Value = (int)v).Margin(10, 0),
+                new Slider().Col(5).Ref(out var _slider3).Value(() => _zLine.Value, onChanged: v => _zLine.Value = (int)v).Margin(10, 0),
                 new Button().Content("Open").OnClick(async (e) => await LoadFile(_slider, _slider2, _slider3)),
                 new TextBox().Col(2).Text(() => _iLine.Value.ToString(), onChanged: v => ParseText(v, _slider)),
                 new TextBox().Col(4).Text(() => _xLine.Value.ToString(), onChanged: v => ParseText(v, _slider2)),
