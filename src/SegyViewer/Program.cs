@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using R3;
 
 namespace SegyViewer;
 
@@ -24,18 +23,17 @@ internal class Program : Window
     private readonly R3.Avalonia.AvaloniaRenderingFrameProvider frameProvider;
     public Program()
     {
-        Title = "Avalonia Hello";
+        Title = "Segy Viewer";
         Width = 1080;
         Height = 720;
         Content = new SeismicComponent();
 
-        var topLevel = GetTopLevel(this);
-        frameProvider = new (topLevel!);
+        frameProvider = new (GetTopLevel(this)!);
     }
 
     // pass frameProvider
-    protected override void OnLoaded(Avalonia.Interactivity.RoutedEventArgs e)
-        => Observable.EveryValueChanged(this, x => x.Width, frameProvider).Subscribe(x => Title = $"Width of {x}");
+    //protected override void OnLoaded(Avalonia.Interactivity.RoutedEventArgs e)
+    //    => Observable.EveryValueChanged(this, x => x.Width, frameProvider).Subscribe(x => Title = $"Width of {x}");
 
     protected override void OnClosed(EventArgs e)
     {
