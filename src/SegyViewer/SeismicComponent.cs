@@ -83,10 +83,16 @@ public class SeismicComponent : ComponentBase
         var r = await t.StorageProvider.OpenFilePickerAsync(o);
         if (r.Count == 0)
             return;
-        _segy = new(r[0].Path.LocalPath);
-        si.Minimum(_segy.InlineBegin).Maximum(_segy.InlineEnd).Value(_segy.InlineBegin);
-        sx.Minimum(_segy.CrossLineBegin).Maximum(_segy.CrossLineEnd).Value(_segy.CrossLineBegin);
-        sz.Minimum(0).Maximum(_segy.SampleSize).Value(0);
+        try
+        {
+            _segy = new(r[0].Path.LocalPath);
+            si.Minimum(_segy.InlineBegin).Maximum(_segy.InlineEnd).Value(_segy.InlineBegin);
+            sx.Minimum(_segy.CrossLineBegin).Maximum(_segy.CrossLineEnd).Value(_segy.CrossLineBegin);
+            sz.Minimum(0).Maximum(_segy.SampleSize).Value(0);
+        } catch (Exception ex) {
+            var box = MsBox.Avalonia.MessageBoxManager.GetMessageBoxStandard("Error", ex.Message, MsBox.Avalonia.Enums.ButtonEnum.YesNo);
+            var result = await box.ShowAsync();
+        }
     }
 
     private static void ParseText(string v, Slider s) => 
