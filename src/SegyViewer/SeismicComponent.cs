@@ -6,6 +6,7 @@ using R3;
 using ScottPlot;
 using ScottPlot.Avalonia;
 using ScottPlot.Panels;
+using ScottPlot.Plottables;
 using Seismic;
 using VerticalAlignment = Avalonia.Layout.VerticalAlignment;
 
@@ -13,19 +14,35 @@ namespace SegyViewer;
 
 public class SeismicComponent : ComponentBase
 {
+    private double minValue = 0.3;
+    private double maxValue = 1;
+    private readonly ReactiveProperty<double> _min = new(0.3);
     private readonly ReactiveProperty<int> _iLine = new(0);
     private readonly ReactiveProperty<int> _xLine = new(0);
     private readonly ReactiveProperty<int> _zLine = new(0);
     private SegyReader _segy = new();
     private AvaPlot _avPlot = new();
     private ColorBar? _cb = null;
-    private IColormap _colorMap = new ScottPlot.Colormaps.Grayscale();
+    private IColormap _colorMap = new ScottPlot.Colormaps.Turbo();
     private static readonly Dictionary<string, IColormap> _colorList = new IColormap[] {
+        BlueRed(),
+        new ScottPlot.Colormaps.Turbo(),
         new ScottPlot.Colormaps.Grayscale(),
         new ScottPlot.Colormaps.Jet(),
         new ScottPlot.Colormaps.Balance()
     }.ToDictionary(k => k.Name, v => v);
 
+    private static ScottPlot.Colormaps.Custom BlueRed(int n = 256)
+    {
+        var colors = new ScottPlot.Color[n];
+        var half = colors.Length / 2;
+        for (int i = 0; i < half; i++)
+        {
+            colors[i] = ScottPlot.Colors.Blue.MixedWith(ScottPlot.Colors.White, (double)i / half);
+            colors[i+half] = ScottPlot.Colors.White.MixedWith(ScottPlot.Colors.Red, (double)i / half);
+        }
+        return new ScottPlot.Colormaps.Custom(colors, "BlueRed");
+    }
 
     public SeismicComponent()
     {
@@ -45,7 +62,7 @@ public class SeismicComponent : ComponentBase
     protected override object Build() => new Grid().Rows("Auto, *, Auto").Children([
         new AvaPlot().Ref(out _avPlot).Row(1),
         new Border().Row(0).BorderThickness(0, 1).BorderBrush(Brushes.LightGray).Margin(0).Padding(10, 5).Child(
-            new Grid().Cols($"Auto, *, *, *,Auto").Children([
+            new Grid().Cols($"Auto, *, *, *,Auto, Auto, Auto").Children([
                 new Grid().Cols("Auto, *, Auto").Children([
                     new TextBlock().Text("Inline"),
                     new Slider().Col(1).Ref(out var s1).Value(() => _iLine.Value, onChanged: v => _iLine.Value = (int)v),
@@ -62,10 +79,24 @@ public class SeismicComponent : ComponentBase
                     new TextBox().Col(2).Text(() => _zLine.Value.ToString(), onChanged: v => ParseText(v, s3)),
                 ]).Col(3),
                 new Button().Content("Open").OnClick(async (e) => await LoadFile(s1, s2, s3)),
-                new ComboBox().Col(7).ItemsSource(_colorList.Keys).SelectedItem(() => _colorMap.Name, onChanged: ChangeColorMap),
+                new ComboBox().Col(4).ItemsSource(_colorList.Keys).SelectedItem(() => _colorMap.Name, onChanged: ChangeColorMap),
+                new TextBox().Col(5).Text(_min.Value.ToString, onChanged: v => _min.Value = UpdateHeatmapRange(min: v)),
+                //new TextBox().Col(6).Text(maxValue.ToString, onChanged: v => maxValue = UpdateHeatmapRange(max: v)),
             ])
         )
     ]);
+
+    private double UpdateHeatmapRange(string? min = null, string? max = null)
+    {
+        if (min is null && max is null)
+            return 0;
+        var v = min is null ? max : min;
+        if (!double.TryParse(v, out var d) || !(_avPlot.Plot.PlottableList.FirstOrDefault(f => f is Heatmap) is Heatmap hm && hm is not null))
+            return 0;
+        hm.ManualRange = new (minValue, d);
+        _avPlot.Refresh();
+        return d;
+    }
 
     private void ChangeColorMap(object o)
     {
@@ -114,7 +145,9 @@ public class SeismicComponent : ComponentBase
         plot.Axes.SetLimitsY(data.GetLength(0), 0);
         var hm = plot.Add.Heatmap(data);
         hm.Colormap = _colorMap;
+        
         _cb = plot.Add.ColorBar(hm);
+        hm.ManualRange = new(0.3, 1);
         _avPlot.Refresh();
     }
 
