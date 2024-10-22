@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Declarative;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -14,9 +15,8 @@ namespace SegyViewer;
 
 public class SeismicComponent : ComponentBase
 {
-    private double minValue = 0.3;
-    private double maxValue = 1;
-    private readonly ReactiveProperty<double> _min = new(0.3);
+    private readonly ReactiveProperty<double> _min = new(0);
+    private readonly ReactiveProperty<double> _max = new(1);
     private readonly ReactiveProperty<int> _iLine = new(0);
     private readonly ReactiveProperty<int> _xLine = new(0);
     private readonly ReactiveProperty<int> _zLine = new(0);
@@ -80,22 +80,24 @@ public class SeismicComponent : ComponentBase
                 ]).Col(3),
                 new Button().Content("Open").OnClick(async (e) => await LoadFile(s1, s2, s3)),
                 new ComboBox().Col(4).ItemsSource(_colorList.Keys).SelectedItem(() => _colorMap.Name, onChanged: ChangeColorMap),
-                new TextBox().Col(5).Text(_min.Value.ToString, onChanged: v => _min.Value = UpdateHeatmapRange(min: v)),
-                //new TextBox().Col(6).Text(maxValue.ToString, onChanged: v => maxValue = UpdateHeatmapRange(max: v)),
+                new TextBox().Col(5).Text(() => _min.Value.ToString()).Ref(out var minT).OnLostFocus(e => UpdateRange(min:minT.Text)),
+                new TextBox().Col(6).Text(() => _max.Value.ToString()).Ref(out var maxT).OnLostFocus(e => UpdateRange(max:maxT.Text)),
             ])
         )
     ]);
 
-    private double UpdateHeatmapRange(string? min = null, string? max = null)
+    private void UpdateRange(string? min = null, string? max = null)
     {
-        if (min is null && max is null)
-            return 0;
-        var v = min is null ? max : min;
-        if (!double.TryParse(v, out var d) || !(_avPlot.Plot.PlottableList.FirstOrDefault(f => f is Heatmap) is Heatmap hm && hm is not null))
-            return 0;
-        hm.ManualRange = new (minValue, d);
+        if (!(_avPlot.Plot.PlottableList.FirstOrDefault(f => f is Heatmap) is Heatmap hm && hm is not null))
+            return;
+        if (!double.TryParse(min, out var minD))
+            minD = _min.Value;
+        if (!double.TryParse(max, out var maxD))
+            maxD = _max.Value;
+        _min.Value = Math.Min(minD, maxD);
+        _max.Value = Math.Max(minD, maxD);
+        hm.ManualRange = new(_min.Value, _max.Value);
         _avPlot.Refresh();
-        return d;
     }
 
     private void ChangeColorMap(object o)
@@ -147,7 +149,7 @@ public class SeismicComponent : ComponentBase
         hm.Colormap = _colorMap;
         
         _cb = plot.Add.ColorBar(hm);
-        hm.ManualRange = new(0.3, 1);
+        hm.ManualRange = new(_min.Value, _max.Value);
         _avPlot.Refresh();
     }
 
