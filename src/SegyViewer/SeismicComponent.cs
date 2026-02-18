@@ -41,7 +41,7 @@ public class SeismicComponent : ComponentBase
             colors[i] = ScottPlot.Colors.Blue.MixedWith(ScottPlot.Colors.White, (double)i / half);
             colors[i+half] = ScottPlot.Colors.White.MixedWith(ScottPlot.Colors.Red, (double)i / half);
         }
-        return new ScottPlot.Colormaps.Custom(colors, "BlueRed");
+        return new ScottPlot.Colormaps.Custom(colors);
     }
 
     public SeismicComponent()

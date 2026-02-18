@@ -680,6 +680,8 @@ public class SegyReader
         if (Format == DataFormat.IBMFLT32)
             return SingleToIbm(value);
         var bytes = BitConverter.GetBytes(value);
-        return _isLittleEndian ? bytes : bytes.Reverse().ToArray();
+        if (!_isLittleEndian)
+            Array.Reverse(bytes);
+        return bytes;
     }
 }
