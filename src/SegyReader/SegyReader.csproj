@@ -6,8 +6,8 @@
     <NullableReferenceTypes>true</NullableReferenceTypes>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Authors>Anton Heryanto Hasan</Authors>
-	<PackageId>Seismic</PackageId>
-    <Version>0.9.5</Version>
+    <PackageId>Seismic</PackageId>
+    <Version>0.9.6</Version>
     <Copyright>2026</Copyright>
     <Description>High performance seismic reader</Description>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -17,8 +17,8 @@
 
   <ItemGroup>
     <PackageReference Include="NativeMemoryArray" Version="1.2.2" />
-    <PackageReference Include="System.IO.Pipelines" Version="10.0.1" />
-	<PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.1" />
+    <PackageReference Include="System.IO.Pipelines" Version="10.0.8" />
+	<PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.8" />
   </ItemGroup>
 
 </Project>
