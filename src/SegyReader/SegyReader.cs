@@ -398,7 +398,7 @@ public class SegyReader
                 chunk[..TRACE_HEADER_SIZE].CopyTo(traceByte.AsSpan(0, TRACE_HEADER_SIZE));
                 for (int j = 0; j < SampleSize; j++)
                 {
-                    Span<byte> sample = FromSingle(traces[i]);
+                    Span<byte> sample = _valueSize == 4 ? FromSingle(traces[i]) : FromInt(traces[i]);
                     sample.CopyTo(traceByte.AsSpan(TRACE_HEADER_SIZE + j * sample.Length, sample.Length));
                     i++;
                 }
@@ -412,7 +412,7 @@ public class SegyReader
     public float[][] ReadAllTraces()
     {
         if (_fileSize > (2L * GB))
-            return Array.Empty<float[]>();
+            return [];
         var buffer = File.ReadAllBytes(FileName);
         var traces = new float[TraceSize][];
         var option = new ParallelOptions();
@@ -680,6 +680,19 @@ public class SegyReader
         if (Format == DataFormat.IBMFLT32)
             return SingleToIbm(value);
         var bytes = BitConverter.GetBytes(value);
+        if (!_isLittleEndian)
+            Array.Reverse(bytes);
+        return bytes;
+    }
+
+    private byte[] FromInt(float value) 
+    {
+        var bytes = Format switch
+        {
+            DataFormat.INT8 => [(byte) value],
+            DataFormat.INT16 => BitConverter.GetBytes((short) value),
+            _ => BitConverter.GetBytes(value),
+        };
         if (!_isLittleEndian)
             Array.Reverse(bytes);
         return bytes;
